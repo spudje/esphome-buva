@@ -1,0 +1,96 @@
+# ESPHome configuration for Zehnder Fan Controller
+# ESP32-C6 with nRF905 radio module
+
+esphome:
+  name: zehnder-fan-controller
+  friendly_name: "Zehnder Fan Controller"
+  platform: ESP32
+  board: esp32-c6-devkitc-1
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "your-encryption-key-here"
+
+# Enable OTA updates
+ota:
+  password: "your-ota-password-here"
+
+# WiFi configuration
+wifi:
+  ssid: "your-wifi-ssid"
+  password: "your-wifi-password"
+  
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Zehnder Fan Controller"
+    password: "zehnder123"
+
+captive_portal:
+
+# SPI configuration for nRF905
+spi:
+  clk_pin: GPIO7   # SPI Clock
+  mosi_pin: GPIO6  # SPI MOSI 
+  miso_pin: GPIO2  # SPI MISO
+
+# External components
+external_components:
+  - source:
+      type: local
+      path: custom_components
+    components: [zehnder_fan]
+
+# Fan configuration
+fan:
+  - platform: zehnder_fan
+    name: "Mechanical Ventilation"
+    id: zehnder_fan_controller
+    
+    # SPI CS pin
+    cs_pin: GPIO18
+    
+    # nRF905 control pins based on original config.h
+    ce_pin: GPIO5      # Chip Enable
+    pwr_pin: GPIO15    # Power control
+    txen_pin: GPIO7    # Transmit enable  
+    dr_pin: GPIO23     # Data ready
+    
+    # Update interval for polling
+    update_interval: 1s
+
+# Button to trigger pairing
+button:
+  - platform: template
+    name: "Pair with Fan"
+    icon: "mdi:wifi"
+    on_press:
+      - lambda: |-
+          id(zehnder_fan_controller).pair_device();
+
+# Sensor to show connection status
+text_sensor:
+  - platform: template
+    name: "Fan Connection Status"
+    id: fan_status
+    icon: "mdi:connection"
+    update_interval: 30s
+    lambda: |-
+      // This would need to be implemented in the component
+      // to expose the pairing status
+      return {"Unknown"};
+
+# Optional: Status LED
+light:
+  - platform: status_led
+    name: "Status LED"
+    pin: GPIO8  # Built-in LED on ESP32-C6-DevKitC-1
+
+# Optional: Restart button
+button:
+  - platform: restart
+    name: "Restart Controller"
