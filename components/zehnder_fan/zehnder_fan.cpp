@@ -400,33 +400,41 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
   }
   
   if (call.get_state().has_value()) {
-    if (*call.get_state()) {
+    this->state = *call.get_state();
+    if (this->state) {
       ESP_LOGD(TAG, "Turning fan on");
+      // By default, turn on to LOW if it was off.
+      if (this->speed == FAN_SPEED_AUTO) {
+         fan_protocol_->set_speed(FAN_SPEED_LOW, 0);
+         this->preset = "LOW";
+      }
     } else {
       ESP_LOGD(TAG, "Turning fan off");
       fan_protocol_->set_speed(FAN_SPEED_AUTO, 0);
+      this->preset = "AUTO";
     }
   }
   
-  if (call.get_preset_mode().has_value()) {
-    auto preset = *call.get_preset_mode();
+  if (call.get_preset().has_value()) {
+    auto preset_val = *call.get_preset();
+    this->preset = preset_val; // Update internal state
+    this->state = true;       // Any preset other than OFF means the fan is ON
+
     uint8_t speed = FAN_SPEED_AUTO;
     
-    if (preset == "LOW") {
+    if (preset_val == "LOW") {
       speed = FAN_SPEED_LOW;
-    } else if (preset == "MEDIUM") {
+    } else if (preset_val == "MEDIUM") {
       speed = FAN_SPEED_MEDIUM;
-    } else if (preset == "HIGH") {
+    } else if (preset_val == "HIGH") {
       speed = FAN_SPEED_HIGH;
-    } else if (preset == "AUTO") {
-      speed = FAN_SPEED_AUTO;
     }
     
-    ESP_LOGD(TAG, "Setting fan speed to %s (%d)", preset.c_str(), speed);
+    ESP_LOGD(TAG, "Setting fan preset to %s (%d)", preset_val.c_str(), speed);
     fan_protocol_->set_speed(speed, 0);
   }
   
-  this->publish_state();
+  this->publish_state(); // This will now publish the correct state to HA
 }
 
 }  // namespace zehnder_fan

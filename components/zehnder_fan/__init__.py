@@ -49,18 +49,3 @@ async def to_code(config):
 
     dr_pin = await cg.gpio_pin_expression(config[CONF_DR_PIN])
     cg.add(var.set_dr_pin(dr_pin))
-
-
-@cg.register_action(
-    "zehnder_fan.pair_device",
-    cg.VoidAction,
-    cv.Schema(
-        {
-            cv.GenerateID(): cv.use_id(ZehnderFanComponent),
-        }
-    ),
-)
-async def zehnder_fan_pair_device_to_code(config, action_id, template_arg, args):
-    var = cg.new_Pvariable(action_id, template_arg)
-    await cg.register_parented(var, config[CONF_ID])
-    return var
