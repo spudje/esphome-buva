@@ -94,9 +94,9 @@ struct FanPairingInfo {
   uint8_t main_unit_type;
 };
 
-class NRF905Controller : public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_1MHZ> {
+class NRF905Controller {
  public:
-  void setup(InternalGPIOPin *ce_pin, InternalGPIOPin *pwr_pin, InternalGPIOPin *txen_pin, InternalGPIOPin *dr_pin);
+  void setup(spi::SPIComponent *parent, InternalGPIOPin *cs_pin, InternalGPIOPin *ce_pin, InternalGPIOPin *pwr_pin, InternalGPIOPin *txen_pin, InternalGPIOPin *dr_pin);
   bool init();
   void set_mode_idle();
   void set_mode_receive();
@@ -113,6 +113,8 @@ class NRF905Controller : public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CL
   uint8_t get_status();
 
  private:
+  spi::SPIComponent *parent_; // Store the SPI bus
+  InternalGPIOPin *cs_pin_;   // Store the CS pin
   InternalGPIOPin *ce_pin_;
   InternalGPIOPin *pwr_pin_;
   InternalGPIOPin *txen_pin_;
@@ -147,7 +149,7 @@ class ZehnderFan {
 class ZehnderFanComponent : public fan::Fan, public PollingComponent {
  public:
   void setup() override;
-  void loop() override;
+  void update() override;
   void dump_config() override;
   
   void set_ce_pin(InternalGPIOPin *pin) { ce_pin_ = pin; }

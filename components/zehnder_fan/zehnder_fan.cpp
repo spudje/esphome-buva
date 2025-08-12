@@ -1,12 +1,13 @@
 #include "zehnder_fan.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace zehnder_fan {
 
-static const char *const TAG = "zehnder_fan";
-
-void NRF905Controller::setup(InternalGPIOPin *ce_pin, InternalGPIOPin *pwr_pin, InternalGPIOPin *txen_pin, InternalGPIOPin *dr_pin) {
+void NRF905Controller::setup(spi::SPIComponent *parent, InternalGPIOPin *cs_pin, InternalGPIOPin *ce_pin, InternalGPIOPin *pwr_pin, InternalGPIOPin *txen_pin, InternalGPIOPin *dr_pin) {
+  parent_ = parent;
+  cs_pin_ = cs_pin;
   ce_pin_ = ce_pin;
   pwr_pin_ = pwr_pin;
   txen_pin_ = txen_pin;
@@ -309,7 +310,8 @@ bool ZehnderFan::set_voltage(uint8_t voltage) {
 }
 
 uint8_t ZehnderFan::create_device_id() {
-  return random(1, 254);
+  // Use ESPHome's helper to get a random number between 1 and 254 inclusive.
+  return (random_uint32() % 254) + 1;
 }
 
 FanResult ZehnderFan::transmit_data(size_t retries) {
@@ -338,9 +340,9 @@ FanResult ZehnderFan::transmit_data(size_t retries) {
 void ZehnderFanComponent::setup() {
   ESP_LOGCONFIG(TAG, "Setting up Zehnder Fan...");
   
-  nrf_radio_.set_spi_parent(this->parent_);
-  nrf_radio_.set_cs_pin(this->cs_);
-  nrf_radio_.setup(ce_pin_, pwr_pin_, txen_pin_, dr_pin_);
+  // nrf_radio_.set_spi_parent(this->parent_);
+  // nrf_radio_.set_cs_pin(this->cs_);
+  nrf_radio_.setup(this->parent_, this->cs_, ce_pin_, pwr_pin_, txen_pin_, dr_pin_);
   
   if (!nrf_radio_.init()) {
     ESP_LOGE(TAG, "Failed to initialize NRF905 radio");
@@ -355,7 +357,7 @@ void ZehnderFanComponent::setup() {
   ESP_LOGCONFIG(TAG, "Zehnder Fan setup complete");
 }
 
-void ZehnderFanComponent::loop() {
+void ZehnderFanComponent::update() {
   nrf_radio_.set_mode_receive();
 }
 
@@ -386,9 +388,9 @@ void ZehnderFanComponent::pair_device() {
 
 fan::FanTraits ZehnderFanComponent::get_traits() {
   auto traits = fan::FanTraits();
-  traits.set_speed_count(4);
+  // REMOVE this line: traits.set_speed_count(4);
   traits.set_supported_preset_modes({
-    "AUTO", "LOW", "MEDIUM", "HIGH"
+    fan::FAN_PRESET_LOW, fan::FAN_PRESET_MEDIUM, fan::FAN_PRESET_HIGH
   });
   return traits;
 }
@@ -398,39 +400,24 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
     ESP_LOGW(TAG, "Cannot control fan - not paired");
     return;
   }
-  
-  if (call.get_state().has_value()) {
-    this->state = *call.get_state();
-    if (this->state) {
-      ESP_LOGD(TAG, "Turning fan on");
-      // By default, turn on to LOW if it was off.
-      if (this->speed == FAN_SPEED_AUTO) {
-         fan_protocol_->set_speed(FAN_SPEED_LOW, 0);
-         this->preset = "LOW";
-      }
-    } else {
-      ESP_LOGD(TAG, "Turning fan off");
-      fan_protocol_->set_speed(FAN_SPEED_AUTO, 0);
-      this->preset = "AUTO";
-    }
-  }
-  
-  if (call.get_preset().has_value()) {
-    auto preset_val = *call.get_preset();
-    this->preset = preset_val; // Update internal state
-    this->state = true;       // Any preset other than OFF means the fan is ON
 
+  if (call.get_preset_mode().has_value()) { // Changed from get_preset()
+    auto preset = *call.get_preset_mode(); // Changed from get_preset()
     uint8_t speed = FAN_SPEED_AUTO;
-    
-    if (preset_val == "LOW") {
+
+    if (preset == fan::FAN_PRESET_LOW) { // Use standard preset names
       speed = FAN_SPEED_LOW;
-    } else if (preset_val == "MEDIUM") {
+    } else if (preset == fan::FAN_PRESET_MEDIUM) {
       speed = FAN_SPEED_MEDIUM;
-    } else if (preset_val == "HIGH") {
+    } else if (preset == fan::FAN_PRESET_HIGH) {
       speed = FAN_SPEED_HIGH;
     }
-    
-    ESP_LOGD(TAG, "Setting fan preset to %s (%d)", preset_val.c_str(), speed);
+
+    // Update the internal state for Home Assistant UI
+    this->state = true;
+    this->preset_mode = preset; // Changed from this->preset
+
+    ESP_LOGD(TAG, "Setting fan speed to %s (%d)", preset.c_str(), speed);
     fan_protocol_->set_speed(speed, 0);
   }
   
