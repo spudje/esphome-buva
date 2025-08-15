@@ -238,8 +238,12 @@ bool ZehnderFanProtocol::set_speed(const FanPairingInfo &pairing_info, uint8_t s
 void ZehnderFanComponent::setup() {
     ESP_LOGCONFIG(TAG, "Setting up Zehnder Fan...");
 
-    // Initialize pins and SPI
-    this->nrf_radio_.set_spi_parent(this);
+    // Initialize SPI device
+    this->spi_setup();
+    this->enable();
+
+    // Initialize pins and SPI for nRF905
+    this->nrf_radio_.set_spi_parent(this->parent_);
     this->nrf_radio_.setup_pins(this->pwr_pin_, this->ce_pin_, this->txen_pin_, this->dr_pin_);
     this->nrf_radio_.init();
 
