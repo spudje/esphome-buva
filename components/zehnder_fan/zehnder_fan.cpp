@@ -271,7 +271,6 @@ void ZehnderFanComponent::dump_config() {
     ESP_LOGCONFIG(TAG, "Zehnder Fan Component:");
     LOG_PIN("  PWR Pin: ", this->pwr_pin_);
     LOG_PIN("  CE Pin: ", this->ce_pin_);
-    LOG_PIN("  CS Pin: ", this->cs_pin_);
     LOG_PIN("  TXEN Pin: ", this->txen_pin_);
     LOG_PIN("  DR Pin: ", this->dr_pin_);
     if (this->pairing_info_.has_value()) {
