@@ -52,8 +52,12 @@ fan:
     txen_pin: GPIO7
     dr_pin: GPIO23
 
-services:
-  - service: start_pairing
-    then:
+button:
+  - platform: restart
+    name: "Restart Controller"
+  - platform: template
+    name: "Pair with Fan"
+    icon: "mdi:wifi"
+    on_press:
       - lambda: |-
           id(ventilation_fan).start_pairing();

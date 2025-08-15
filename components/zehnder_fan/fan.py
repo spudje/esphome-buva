@@ -17,7 +17,8 @@ zehnder_fan_ns = cg.esphome_ns.namespace("zehnder_fan")
 ZehnderFanComponent = zehnder_fan_ns.class_("ZehnderFanComponent", fan.Fan, cg.PollingComponent, spi.SPIDevice)
 
 CONFIG_SCHEMA = (
-    fan.FAN_SCHEMA.extend(
+    fan.fan_schema(ZehnderFanComponent)
+    .extend(
         {
             cv.GenerateID(): cv.declare_id(ZehnderFanComponent),
             cv.Required(CONF_PWR_PIN): pins.gpio_output_pin_schema,
