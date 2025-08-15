@@ -55,7 +55,8 @@ struct FanPairingInfo {
 // =========================================================================
 class NRF905Controller : public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST,
                                               spi::CLOCK_POLARITY_LOW,
-                                              spi::CLOCK_PHASE_LEADING> {
+                                              spi::CLOCK_PHASE_LEADING,
+                                              spi::DATA_RATE_4MHZ> {
 public:
     void setup_pins(GPIOPin *pwr_pin, GPIOPin *ce_pin, GPIOPin *txen_pin, GPIOPin *dr_pin);
     bool init();
