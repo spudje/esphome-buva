@@ -17,10 +17,10 @@ CONFIG_SCHEMA = (
     fan.FAN_SCHEMA.extend(
         {
             cv.GenerateID(): cv.declare_id(ZehnderFanComponent),
-            cv.Required(CONF_PWR_PIN): cv.pinned_gpio_output_schema,
-            cv.Required(CONF_CE_PIN): cv.pinned_gpio_output_schema,
-            cv.Required(CONF_TXEN_PIN): cv.pinned_gpio_output_schema,
-            cv.Required(CONF_DR_PIN): cv.pinned_gpio_input_schema,
+            cv.Required(CONF_PWR_PIN): cv.gpio_output_pin_schema,
+            cv.Required(CONF_CE_PIN): cv.gpio_output_pin_schema,
+            cv.Required(CONF_TXEN_PIN): cv.gpio_output_pin_schema,
+            cv.Required(CONF_DR_PIN): cv.gpio_input_pin_schema,
         }
     )
     .extend(cv.polling_component_schema("60s"))
