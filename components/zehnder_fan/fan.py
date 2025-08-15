@@ -2,6 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import fan, spi
 from esphome.const import CONF_ID
+from esphome import pins
 
 # Define custom pin constants
 CONF_TXEN_PIN = "txen_pin"
@@ -17,13 +18,13 @@ CONFIG_SCHEMA = (
     fan.FAN_SCHEMA.extend(
         {
             cv.GenerateID(): cv.declare_id(ZehnderFanComponent),
-            cv.Required(CONF_PWR_PIN): cv.gpio_output_pin_schema,
-            cv.Required(CONF_CE_PIN): cv.gpio_output_pin_schema,
-            cv.Required(CONF_TXEN_PIN): cv.gpio_output_pin_schema,
-            cv.Required(CONF_DR_PIN): cv.gpio_input_pin_schema,
+            cv.Required(CONF_PWR_PIN): pins.gpio_output_pin_schema,
+            cv.Required(CONF_CE_PIN): pins.gpio_output_pin_schema,
+            cv.Required(CONF_TXEN_PIN): pins.gpio_output_pin_schema,
+            cv.Required(CONF_DR_PIN): pins.gpio_input_pin_schema,
         }
     )
-    .extend(cv.polling_component_schema("60s"))
+    .extend(cv.polling_component_schema("1s"))
     .extend(spi.spi_device_schema(cs_pin_schema=True))
 )
 
