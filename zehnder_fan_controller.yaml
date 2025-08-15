@@ -17,7 +17,7 @@ api:
 
 ota:
   - platform: esphome
-    password: "6da759f931ca0673176b0bfce32a25c4"
+    password: "redacted"
 
 wifi:
   ssid: !secret wifi_ssid
@@ -26,9 +26,9 @@ wifi:
 
 # SPI configuration for nRF905
 spi:
-  clk_pin: GPIO7   # SPI Clock
-  mosi_pin: GPIO6  # SPI MOSI 
-  miso_pin: GPIO2  # SPI MISO
+  clk_pin: GPIO21
+  mosi_pin: GPIO19
+  miso_pin: GPIO20
 
 # External components
 external_components:
@@ -36,51 +36,24 @@ external_components:
       type: git
       url: https://github.com/srslynow/esphome-zehnder
       ref: main
+    refresh: 60sec
     components: [zehnder_fan]
 
 # Fan configuration
 fan:
   - platform: zehnder_fan
+    id: ventilation_fan
     name: "Mechanical Ventilation"
-    id: zehnder_fan_controller
     
-    # SPI CS pin
+    # Required Pin Configuration
     cs_pin: GPIO18
-    
-    # nRF905 control pins based on original config.h
-    ce_pin: GPIO5      # Chip Enable
-    pwr_pin: GPIO15    # Power control
-    txen_pin: GPIO7    # Transmit enable  
-    dr_pin: GPIO23     # Data ready
-    
-    # Update interval for polling
-    update_interval: 1s
+    pwr_pin: GPIO15
+    ce_pin: GPIO5
+    txen_pin: GPIO7
+    dr_pin: GPIO23
 
-# Button to trigger pairing
-button:
-  - platform: restart
-    name: "Restart Controller"
-  - platform: template
-    name: "Pair with Fan"
-    icon: "mdi:wifi"
-    on_press:
+services:
+  - service: start_pairing
+    then:
       - lambda: |-
-          id(zehnder_fan_controller).pair_device();
-
-# Sensor to show connection status
-text_sensor:
-  - platform: template
-    name: "Fan Connection Status"
-    id: fan_status
-    icon: "mdi:connection"
-    update_interval: 30s
-    lambda: |-
-      // This would need to be implemented in the component
-      // to expose the pairing status
-      return {"Unknown"};
-
-# Optional: Status LED
-light:
-  - platform: status_led
-    name: "Status LED"
-    pin: GPIO8  # Built-in LED on ESP32-C6-DevKitC-1
+          id(ventilation_fan).start_pairing();

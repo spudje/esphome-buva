@@ -1,428 +1,337 @@
 #include "zehnder_fan.h"
 #include "esphome/core/log.h"
-#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace zehnder_fan {
 
-void NRF905Controller::setup(spi::SPIComponent *parent, InternalGPIOPin *cs_pin, InternalGPIOPin *ce_pin, InternalGPIOPin *pwr_pin, InternalGPIOPin *txen_pin, InternalGPIOPin *dr_pin) {
-  parent_ = parent;
-  cs_pin_ = cs_pin;
-  ce_pin_ = ce_pin;
-  pwr_pin_ = pwr_pin;
-  txen_pin_ = txen_pin;
-  dr_pin_ = dr_pin;
-  
-  ce_pin_->setup();
-  pwr_pin_->setup();
-  txen_pin_->setup();
-  dr_pin_->setup();
-  
-  ce_pin_->pin_mode(gpio::FLAG_OUTPUT);
-  pwr_pin_->pin_mode(gpio::FLAG_OUTPUT);
-  txen_pin_->pin_mode(gpio::FLAG_OUTPUT);
-  dr_pin_->pin_mode(gpio::FLAG_INPUT);
+static const char *const TAG = "zehnder_fan";
+
+// =========================================================================
+// 1. NRF905Controller Implementation
+// =========================================================================
+
+void NRF905Controller::setup_pins(GPIOPin *pwr_pin, GPIOPin *ce_pin, GPIOPin *txen_pin, GPIOPin *dr_pin) {
+    this->pwr_pin_ = pwr_pin;
+    this->ce_pin_ = ce_pin;
+    this->txen_pin_ = txen_pin;
+    this->dr_pin_ = dr_pin;
 }
 
 bool NRF905Controller::init() {
-  set_mode_idle();
-  
-  if (!test_spi()) {
-    ESP_LOGE(TAG, "NRF905 SPI test failed");
-    return false;
-  }
-  
-  memcpy(config_registers_, ZEHNDER_PROFILE, NRF905_REGISTER_COUNT);
-  encode_config_registers();
-  write_config_registers();
-  
-  ESP_LOGD(TAG, "NRF905 initialized successfully");
-  return true;
+    this->pwr_pin_->setup();
+    this->ce_pin_->setup();
+    this->txen_pin_->setup();
+    this->dr_pin_->setup();
+
+    this->set_mode_idle();
+
+    // Zehnder nRF905 configuration profile from fan.h
+    const uint8_t zehnder_config[] = {0x76, 0x2E, 0x44, 0x10, 0x10, 0xA5, 0x5A, 0x5A, 0xA5, 0xDB};
+    this->write_config_registers(zehnder_config, sizeof(zehnder_config));
+
+    ESP_LOGD(TAG, "NRF905 initialized.");
+    return true; // Add SPI check if necessary
 }
 
 void NRF905Controller::set_mode_idle() {
-  ce_pin_->digital_write(false);
-  txen_pin_->digital_write(false);
-  pwr_pin_->digital_write(true);
+    this->pwr_pin_->digital_write(true);
+    this->ce_pin_->digital_write(false);
+    this->txen_pin_->digital_write(false);
 }
 
 void NRF905Controller::set_mode_receive() {
-  ce_pin_->digital_write(true);
-  txen_pin_->digital_write(false);
-  pwr_pin_->digital_write(true);
+    this->pwr_pin_->digital_write(true);
+    this->txen_pin_->digital_write(false);
+    this->ce_pin_->digital_write(true);
 }
 
 void NRF905Controller::set_mode_transmit() {
-  ce_pin_->digital_write(true);
-  txen_pin_->digital_write(true);
-  pwr_pin_->digital_write(true);
-}
-
-bool NRF905Controller::transmit_payload(const uint8_t *payload, size_t size) {
-  if (size > NRF905_MAX_FRAMESIZE) {
-    ESP_LOGE(TAG, "Payload size %d exceeds maximum %d", size, NRF905_MAX_FRAMESIZE);
-    return false;
-  }
-  
-  memcpy(tx_payload_, payload, size);
-  write_tx_payload(payload);
-  return start_tx(FAN_TX_FRAMES);
-}
-
-bool NRF905Controller::read_payload(uint8_t *buffer, size_t size) {
-  if (!is_data_ready()) {
-    return false;
-  }
-  
-  this->enable();
-  this->write_byte(NRF905_COMMAND_R_RX_PAYLOAD);
-  this->read_array(buffer, size);
-  this->disable();
-  
-  return true;
-}
-
-bool NRF905Controller::is_data_ready() {
-  return dr_pin_->digital_read();
+    this->pwr_pin_->digital_write(true);
+    this->ce_pin_->digital_write(false); // Drop to standby before enabling TX
+    delayMicroseconds(100);
+    this->txen_pin_->digital_write(true);
+    this->ce_pin_->digital_write(true);
 }
 
 void NRF905Controller::set_tx_address(uint32_t address) {
-  tx_address_ = address;
-  write_tx_address();
+    this->enable();
+    this->write_byte(0x22); // W_TX_ADDRESS
+    this->write_byte((address >> 0) & 0xFF);
+    this->write_byte((address >> 8) & 0xFF);
+    this->write_byte((address >> 16) & 0xFF);
+    this->write_byte((address >> 24) & 0xFF);
+    this->disable();
 }
 
 void NRF905Controller::set_rx_address(uint32_t address) {
-  rx_address_ = address;
-  
-  config_registers_[5] = (address & 0x000000FF);
-  config_registers_[6] = (address & 0x0000FF00) >> 8;
-  config_registers_[7] = (address & 0x00FF0000) >> 16;
-  config_registers_[8] = (address & 0xFF000000) >> 24;
-  
-  encode_config_registers();
-  write_config_registers();
+    // RX address is set via config registers, not a direct command
+    const uint8_t config_update[] = {
+        0x76, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
+        (uint8_t)((address >> 0) & 0xFF),
+        (uint8_t)((address >> 8) & 0xFF),
+        (uint8_t)((address >> 16) & 0xFF),
+        (uint8_t)((address >> 24) & 0xFF),
+        0xDB, // Keep last byte
+    };
+    this->write_config_registers(config_update, sizeof(config_update));
 }
 
-void NRF905Controller::write_config_registers() {
-  this->enable();
-  this->write_byte(NRF905_COMMAND_W_CONFIG);
-  this->write_array(config_registers_, NRF905_REGISTER_COUNT);
-  this->disable();
-  delay(1);
+
+void NRF905Controller::write_tx_payload(const uint8_t *payload, size_t size) {
+    this->enable();
+    this->write_byte(0x20); // W_TX_PAYLOAD
+    this->write_array(payload, size);
+    this->disable();
 }
 
-void NRF905Controller::write_tx_payload(const uint8_t *payload) {
-  this->enable();
-  this->write_byte(NRF905_COMMAND_W_TX_PAYLOAD);
-  this->write_array(payload, FAN_FRAMESIZE);
-  this->disable();
-}
-
-void NRF905Controller::write_tx_address() {
-  uint8_t addr_bytes[4];
-  addr_bytes[0] = (tx_address_ & 0x000000FF);
-  addr_bytes[1] = (tx_address_ & 0x0000FF00) >> 8;
-  addr_bytes[2] = (tx_address_ & 0x00FF0000) >> 16;
-  addr_bytes[3] = (tx_address_ & 0xFF000000) >> 24;
-  
-  this->enable();
-  this->write_byte(NRF905_COMMAND_W_TX_ADDRESS);
-  this->write_array(addr_bytes, 4);
-  this->disable();
-}
-
-bool NRF905Controller::start_tx(uint32_t retransmit_count) {
-  set_mode_transmit();
-  
-  uint32_t start_time = millis();
-  bool tx_done = false;
-  
-  for (uint32_t i = 0; i < retransmit_count && !tx_done; i++) {
-    set_mode_transmit();
-    delay(1);
-    
-    while (!dr_pin_->digital_read() && (millis() - start_time) < 2000) {
-      delay(1);
+bool NRF905Controller::read_rx_payload(uint8_t *buffer, size_t size) {
+    if (!this->is_data_ready()) {
+        return false;
     }
-    
-    if (dr_pin_->digital_read()) {
-      tx_done = true;
-    }
-    
-    set_mode_receive();
-    delay(10);
-  }
-  
-  return tx_done;
+    this->enable();
+    this->write_byte(0x24); // R_RX_PAYLOAD
+    this->read_array(buffer, size);
+    this->disable();
+    return true;
 }
 
-uint8_t NRF905Controller::get_status() {
-  this->enable();
-  uint8_t status = this->read_byte();
-  this->disable();
-  return status;
+void NRF905Controller::write_config_registers(const uint8_t *config, size_t size) {
+    this->set_mode_idle();
+    this->enable();
+    this->write_byte(0x00); // W_CONFIG
+    this->write_array(config, size);
+    this->disable();
 }
 
-void NRF905Controller::encode_config_registers() {
-}
 
-bool NRF905Controller::test_spi() {
-  uint32_t original_addr = tx_address_;
-  
-  tx_address_ = 0x55555555;
-  write_tx_address();
-  
-  this->enable();
-  this->write_byte(NRF905_COMMAND_R_TX_ADDRESS);
-  uint8_t test_addr[4];
-  this->read_array(test_addr, 4);
-  this->disable();
-  
-  uint32_t read_addr = test_addr[0] | (test_addr[1] << 8) | (test_addr[2] << 16) | (test_addr[3] << 24);
-  
-  tx_address_ = original_addr;
-  write_tx_address();
-  
-  return (read_addr == 0x55555555);
-}
+// =========================================================================
+// 2. ZehnderFanProtocol Implementation
+// =========================================================================
 
-ZehnderFan::ZehnderFan(NRF905Controller *radio) : radio_(radio), rx_count_(0) {
-}
+ZehnderFanProtocol::ZehnderFanProtocol(NRF905Controller *radio) : radio_(radio) {}
 
-std::optional<FanPairingInfo> ZehnderFan::discover(uint8_t device_id, uint32_t timeout) {
-  ESP_LOGD(TAG, "Starting discovery with device ID 0x%02X", device_id);
-  
-  uint8_t payload[FAN_FRAMESIZE] = {
-    FAN_TYPE_BROADCAST, 0x00, FAN_TYPE_REMOTE_CONTROL, device_id, 
-    FAN_TTL, FAN_NETWORK_JOIN_ACK, 0x04, 0xa5, 0x5a, 0x5a, 0xa5, 
-    0x00, 0x00, 0x00, 0x00, 0x00
-  };
-  
-  radio_->set_mode_idle();
-  radio_->set_rx_address(NETWORK_LINK_ID);
-  radio_->set_tx_address(NETWORK_LINK_ID);
-  
-  rx_count_ = 0;
-  radio_->write_tx_payload(payload);
-  
-  if (transmit_data(FAN_TX_RETRIES) == FAN_RESULT_SUCCESS) {
-    for (size_t i = 0; i < rx_count_; i++) {
-      uint8_t frametype = rx_buffer_[i][5];
-      if (frametype == FAN_NETWORK_JOIN_OPEN) {
-        uint32_t network_id = rx_buffer_[i][7] | 
-                             (rx_buffer_[i][8] << 8) | 
-                             (rx_buffer_[i][9] << 16) | 
-                             (rx_buffer_[i][10] << 24);
-        
-        uint8_t main_unit_type = rx_buffer_[i][2];
-        uint8_t main_unit_id = rx_buffer_[i][3];
-        
-        ESP_LOGD(TAG, "Found unit type 0x%02X with ID 0x%02X on network 0x%08X", 
-                 main_unit_type, main_unit_id, network_id);
-        
-        payload[0] = FAN_TYPE_MAIN_UNIT;
-        payload[1] = main_unit_id;
-        payload[5] = FAN_NETWORK_JOIN_REQUEST;
-        payload[7] = (network_id & 0x000000FF);
-        payload[8] = (network_id & 0x0000FF00) >> 8;
-        payload[9] = (network_id & 0x00FF0000) >> 16;
-        payload[10] = (network_id & 0xFF000000) >> 24;
-        
-        radio_->set_rx_address(network_id);
-        radio_->set_tx_address(network_id);
-        radio_->write_tx_payload(payload);
-        
-        rx_count_ = 0;
-        if (transmit_data(FAN_TX_RETRIES) == FAN_RESULT_SUCCESS) {
-          for (size_t j = 0; j < rx_count_; j++) {
-            uint8_t reply_frametype = rx_buffer_[j][5];
-            if (reply_frametype == FAN_FRAME_0B || reply_frametype == FAN_FRAME_04) {
-              ESP_LOGD(TAG, "Link successful to unit with ID 0x%02X on network 0x%08X", 
-                       main_unit_id, network_id);
-              
-              return FanPairingInfo{network_id, main_unit_id, main_unit_type};
+bool ZehnderFanProtocol::transmit_and_wait(size_t retries) {
+    for (int i = 0; i < retries; ++i) {
+        // Transmit burst
+        this->radio_->set_mode_transmit();
+        delay(2); // Short delay to ensure transmission starts
+        this->radio_->set_mode_receive();
+
+        // Wait for a reply
+        uint32_t start_time = millis();
+        while (millis() - start_time < FAN_REPLY_TIMEOUT_MS) {
+            if (this->radio_->read_rx_payload(this->rx_buffer_, FAN_FRAMESIZE)) {
+                return true; // Got a reply
             }
-          }
+            yield();
         }
-      }
     }
-  }
-  
-  ESP_LOGD(TAG, "No networks found during discovery");
-  return std::nullopt;
+    return false; // Timed out
 }
 
-bool ZehnderFan::set_speed(uint8_t speed, uint8_t timer) {
-  if (!radio_) {
-    ESP_LOGE(TAG, "Radio not initialized");
+std::optional<FanPairingInfo> ZehnderFanProtocol::pair() {
+    ESP_LOGD(TAG, "Starting fan pairing discovery...");
+    this->radio_->set_mode_idle();
+    this->radio_->set_tx_address(NETWORK_LINK_ID);
+    this->radio_->set_rx_address(NETWORK_LINK_ID);
+    this->radio_->set_mode_receive();
+
+    uint8_t my_device_id = random_uint8() & 0xFE; // Avoid 0xFF
+    if (my_device_id == 0x00) my_device_id = 1;
+
+    // Frame 1: Send broadcast discovery
+    uint8_t payload_discover[FAN_FRAMESIZE] = {0x04, 0x00, FAN_TYPE_REMOTE_CONTROL, my_device_id, 0xFA, FAN_NETWORK_JOIN_ACK, 0x04, 0xa5, 0x5a, 0x5a, 0xa5, 0x00, 0x00, 0x00, 0x00, 0x00};
+    this->radio_->write_tx_payload(payload_discover, sizeof(payload_discover));
+
+    if (!this->transmit_and_wait(FAN_TX_RETRIES)) {
+        ESP_LOGW(TAG, "Pairing failed: No response from main unit.");
+        return std::nullopt;
+    }
+
+    if (this->rx_buffer_[5] != FAN_NETWORK_JOIN_OPEN) {
+        ESP_LOGW(TAG, "Pairing failed: Received unexpected frame type 0x%02X.", this->rx_buffer_[5]);
+        return std::nullopt;
+    }
+
+    FanPairingInfo result;
+    result.main_unit_type = this->rx_buffer_[2];
+    result.main_unit_id = this->rx_buffer_[3];
+    result.network_id = (uint32_t)this->rx_buffer_[7] | ((uint32_t)this->rx_buffer_[8] << 8) | ((uint32_t)this->rx_buffer_[9] << 16) | ((uint32_t)this->rx_buffer_[10] << 24);
+    result.my_device_id = my_device_id;
+    
+    ESP_LOGD(TAG, "Found fan unit ID 0x%02X on network 0x%08X. Requesting to join...", result.main_unit_id, result.network_id);
+
+    // Frame 2: Request to join the discovered network
+    this->radio_->set_tx_address(result.network_id);
+    this->radio_->set_rx_address(result.network_id);
+    
+    uint8_t payload_join[FAN_FRAMESIZE] = {0};
+    payload_join[0] = FAN_TYPE_MAIN_UNIT;
+    payload_join[1] = result.main_unit_id;
+    payload_join[2] = FAN_TYPE_REMOTE_CONTROL;
+    payload_join[3] = my_device_id;
+    payload_join[4] = 0xFA;
+    payload_join[5] = FAN_NETWORK_JOIN_REQUEST;
+    payload_join[7] = (result.network_id >> 0) & 0xFF;
+    payload_join[8] = (result.network_id >> 8) & 0xFF;
+    payload_join[9] = (result.network_id >> 16) & 0xFF;
+    payload_join[10] = (result.network_id >> 24) & 0xFF;
+
+    this->radio_->write_tx_payload(payload_join, sizeof(payload_join));
+
+    if (!this->transmit_and_wait(FAN_TX_RETRIES)) {
+        ESP_LOGW(TAG, "Pairing failed: No response to join request.");
+        return std::nullopt;
+    }
+
+    // Frame 3: Acknowledge successful link
+    uint8_t payload_ack[FAN_FRAMESIZE] = {0};
+    payload_ack[0] = FAN_TYPE_MAIN_UNIT;
+    payload_ack[1] = result.main_unit_id;
+    payload_ack[2] = FAN_TYPE_REMOTE_CONTROL;
+    payload_ack[3] = my_device_id;
+    payload_ack[4] = 0xFA;
+    payload_ack[5] = FAN_FRAME_0B;
+
+    this->radio_->write_tx_payload(payload_ack, sizeof(payload_ack));
+    this->transmit_and_wait(1); // Fire and forget is OK here
+
+    ESP_LOGI(TAG, "Pairing successful! Network ID: 0x%08X, Fan ID: 0x%02X, My Device ID: 0x%02X",
+             result.network_id, result.main_unit_id, result.my_device_id);
+
+    return result;
+}
+
+bool ZehnderFanProtocol::set_speed(const FanPairingInfo &pairing_info, uint8_t speed, uint8_t timer_minutes) {
+    this->radio_->set_mode_idle();
+    this->radio_->set_tx_address(pairing_info.network_id);
+    this->radio_->set_rx_address(pairing_info.network_id);
+
+    uint8_t payload[FAN_FRAMESIZE] = {0};
+    payload[0] = FAN_TYPE_MAIN_UNIT;
+    payload[1] = pairing_info.main_unit_id;
+    payload[2] = FAN_TYPE_REMOTE_CONTROL;
+    payload[3] = pairing_info.my_device_id;
+    payload[4] = 0xFA; // TTL
+    payload[5] = (timer_minutes > 0) ? FAN_FRAME_SETTIMER : FAN_FRAME_SETSPEED;
+    payload[6] = (timer_minutes > 0) ? 0x02 : 0x01; // Number of parameters
+    payload[7] = speed;
+    payload[8] = timer_minutes;
+
+    this->radio_->write_tx_payload(payload, sizeof(payload));
+    
+    if (this->transmit_and_wait(FAN_TX_RETRIES)) {
+        ESP_LOGD(TAG, "Set speed command acknowledged.");
+        return true;
+    }
+    
+    ESP_LOGW(TAG, "Set speed command was not acknowledged by the fan.");
     return false;
-  }
-  
-  uint8_t payload[FAN_FRAMESIZE] = {
-    FAN_TYPE_MAIN_UNIT, 0x00, FAN_TYPE_REMOTE_CONTROL, create_device_id(),
-    FAN_TTL, FAN_FRAME_SETSPEED, 0x01, speed, timer, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-  };
-  
-  if (timer != 0) {
-    payload[5] = FAN_FRAME_SETTIMER;
-    payload[6] = 0x02;
-  }
-  
-  radio_->write_tx_payload(payload);
-  FanResult result = transmit_data(FAN_TX_RETRIES);
-  
-  if (result == FAN_RESULT_SUCCESS) {
-    for (size_t i = 0; i < rx_count_; i++) {
-      uint8_t frametype = rx_buffer_[i][5];
-      if (frametype == FAN_TYPE_FAN_SETTINGS) {
-        uint8_t reply_payload[FAN_FRAMESIZE] = {
-          FAN_TYPE_MAIN_UNIT, 0x00, FAN_TYPE_REMOTE_CONTROL, create_device_id(),
-          FAN_TTL, FAN_FRAME_SETSPEED_REPLY, 0x03, 0x54, 0x03, 0x20,
-          0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        };
-        
-        radio_->write_tx_payload(reply_payload);
-        return (transmit_data(FAN_TX_RETRIES) == FAN_RESULT_SUCCESS);
-      }
-    }
-  }
-  
-  return (result == FAN_RESULT_SUCCESS);
 }
 
-bool ZehnderFan::set_voltage(uint8_t voltage) {
-  if (!radio_) {
-    ESP_LOGE(TAG, "Radio not initialized");
-    return false;
-  }
-  
-  uint8_t payload[FAN_FRAMESIZE] = {
-    FAN_TYPE_MAIN_UNIT, 0x00, FAN_TYPE_REMOTE_CONTROL, create_device_id(),
-    FAN_TTL, FAN_FRAME_SETVOLTAGE, 0x01, voltage, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-  };
-  
-  radio_->write_tx_payload(payload);
-  FanResult result = transmit_data(FAN_TX_RETRIES);
-  
-  return (result == FAN_RESULT_SUCCESS);
-}
 
-uint8_t ZehnderFan::create_device_id() {
-  // Use ESPHome's helper to get a random number between 1 and 254 inclusive.
-  return (random_uint32() % 254) + 1;
-}
-
-FanResult ZehnderFan::transmit_data(size_t retries) {
-  for (size_t attempt = 0; attempt < retries; attempt++) {
-    if (radio_->start_tx(FAN_TX_FRAMES)) {
-      size_t rx_before = rx_count_;
-      
-      uint32_t start_time = millis();
-      while ((millis() - start_time) < FAN_REPLY_TIMEOUT) {
-        if (radio_->is_data_ready() && rx_count_ < 32) {
-          radio_->read_payload(rx_buffer_[rx_count_].data(), FAN_FRAMESIZE);
-          rx_count_++;
-        }
-        delay(10);
-      }
-      
-      if (rx_count_ > rx_before) {
-        return FAN_RESULT_SUCCESS;
-      }
-    }
-  }
-  
-  return FAN_ERROR_TX_FAILED;
-}
+// =========================================================================
+// 3. ZehnderFanComponent Implementation
+// =========================================================================
 
 void ZehnderFanComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up Zehnder Fan...");
-  
-  // nrf_radio_.set_spi_parent(this->parent_);
-  // nrf_radio_.set_cs_pin(this->cs_);
-  nrf_radio_.setup(this->parent_, this->cs_, ce_pin_, pwr_pin_, txen_pin_, dr_pin_);
-  
-  if (!nrf_radio_.init()) {
-    ESP_LOGE(TAG, "Failed to initialize NRF905 radio");
-    this->mark_failed();
-    return;
-  }
-  
-  fan_protocol_ = std::make_unique<ZehnderFan>(&nrf_radio_);
-  device_id_ = fan_protocol_->create_device_id();
-  
-  ESP_LOGD(TAG, "Generated device ID: 0x%02X", device_id_);
-  ESP_LOGCONFIG(TAG, "Zehnder Fan setup complete");
+    ESP_LOGCONFIG(TAG, "Setting up Zehnder Fan...");
+
+    // Initialize pins and SPI
+    this->nrf_radio_.set_spi_parent(this->parent_);
+    this->nrf_radio_.setup_pins(this->pwr_pin_, this->ce_pin_, this->txen_pin_, this->dr_pin_);
+    this->nrf_radio_.init();
+
+    this->fan_protocol_ = make_unique<ZehnderFanProtocol>(&this->nrf_radio_);
+    
+    // Setup preferences for storing pairing data
+    this->preferences_ = global_preferences->make_preference<FanPairingInfo>(this->get_object_id_hash());
+
+    if (this->load_pairing_info()) {
+        ESP_LOGI(TAG, "Loaded pairing info from flash.");
+    } else {
+        ESP_LOGW(TAG, "No pairing info found. Fan needs to be paired.");
+    }
 }
 
-void ZehnderFanComponent::update() {
-  nrf_radio_.set_mode_receive();
+void ZehnderFanComponent::loop() {
+    // Polling logic can be added here if needed, but for now we are command-driven.
 }
 
 void ZehnderFanComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "Zehnder Fan:");
-  ESP_LOGCONFIG(TAG, "  Device ID: 0x%02X", device_id_);
-  if (pairing_info_.has_value()) {
-    ESP_LOGCONFIG(TAG, "  Network ID: 0x%08X", pairing_info_->network_id);
-    ESP_LOGCONFIG(TAG, "  Main Unit ID: 0x%02X", pairing_info_->main_unit_id);
-    ESP_LOGCONFIG(TAG, "  Main Unit Type: 0x%02X", pairing_info_->main_unit_type);
-  } else {
-    ESP_LOGCONFIG(TAG, "  Not paired");
-  }
-}
-
-void ZehnderFanComponent::pair_device() {
-  ESP_LOGI(TAG, "Starting pairing process...");
-  
-  auto result = fan_protocol_->discover(device_id_, FAN_JOIN_DEFAULT_TIMEOUT);
-  if (result.has_value()) {
-    pairing_info_ = result;
-    ESP_LOGI(TAG, "Pairing successful! Network: 0x%08X, Unit: 0x%02X", 
-             pairing_info_->network_id, pairing_info_->main_unit_id);
-  } else {
-    ESP_LOGE(TAG, "Pairing failed - no main unit found");
-  }
+    ESP_LOGCONFIG(TAG, "Zehnder Fan Component:");
+    LOG_PIN("  PWR Pin: ", this->pwr_pin_);
+    LOG_PIN("  CE Pin: ", this->ce_pin_);
+    LOG_PIN("  TXEN Pin: ", this->txen_pin_);
+    LOG_PIN("  DR Pin: ", this->dr_pin_);
+    if (this->pairing_info_.has_value()) {
+        ESP_LOGCONFIG(TAG, "  Paired Network ID: 0x%08X", this->pairing_info_->network_id);
+        ESP_LOGCONFIG(TAG, "  Paired Fan ID: 0x%02X", this->pairing_info_->main_unit_id);
+    } else {
+        ESP_LOGCONFIG(TAG, "  Device is not paired.");
+    }
 }
 
 fan::FanTraits ZehnderFanComponent::get_traits() {
-  auto traits = fan::FanTraits();
-  // REMOVE this line: traits.set_speed_count(4);
-  traits.set_supported_preset_modes({
-    fan::FAN_PRESET_LOW, fan::FAN_PRESET_MEDIUM, fan::FAN_PRESET_HIGH
-  });
-  return traits;
+    // The fan supports Off, Low, Medium, High speeds.
+    return fan::FanTraits(false, true, false, 3);
 }
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
-  if (!pairing_info_.has_value()) {
-    ESP_LOGW(TAG, "Cannot control fan - not paired");
-    return;
-  }
-
-  if (call.get_preset_mode().has_value()) { // Changed from get_preset()
-    auto preset = *call.get_preset_mode(); // Changed from get_preset()
-    uint8_t speed = FAN_SPEED_AUTO;
-
-    if (preset == fan::FAN_PRESET_LOW) { // Use standard preset names
-      speed = FAN_SPEED_LOW;
-    } else if (preset == fan::FAN_PRESET_MEDIUM) {
-      speed = FAN_SPEED_MEDIUM;
-    } else if (preset == fan::FAN_PRESET_HIGH) {
-      speed = FAN_SPEED_HIGH;
+    if (!this->pairing_info_.has_value()) {
+        ESP_LOGE(TAG, "Cannot control fan: Not paired.");
+        return;
     }
 
-    // Update the internal state for Home Assistant UI
-    this->state = true;
-    this->preset_mode = preset; // Changed from this->preset
+    if (call.get_state().has_value()) {
+        this->state = *call.get_state();
+    }
+    if (call.get_speed().has_value()) {
+        this->speed = *call.get_speed();
+    }
 
-    ESP_LOGD(TAG, "Setting fan speed to %s (%d)", preset.c_str(), speed);
-    fan_protocol_->set_speed(speed, 0);
-  }
-  
-  this->publish_state(); // This will now publish the correct state to HA
+    uint8_t fan_speed = FAN_SPEED_AUTO; // Off
+    if (this->state) {
+        switch (this->speed) {
+            case 1: fan_speed = FAN_SPEED_LOW; break;
+            case 2: fan_speed = FAN_SPEED_MEDIUM; break;
+            case 3: fan_speed = FAN_SPEED_HIGH; break;
+        }
+    }
+    
+    // For now, timer is not implemented via Home Assistant fan model. Could be a separate service.
+    uint8_t timer = 0; 
+    
+    ESP_LOGD(TAG, "Setting fan speed to level %d", this->speed);
+    this->fan_protocol_->set_speed(this->pairing_info_.value(), fan_speed, timer);
+    
+    this->publish_state();
 }
 
-}  // namespace zehnder_fan
-}  // namespace esphome
+void ZehnderFanComponent::start_pairing() {
+    ESP_LOGI(TAG, "Pairing service called. Attempting to discover and pair with fan...");
+    auto result = this->fan_protocol_->pair();
+    if (result.has_value()) {
+        this->save_pairing_info(result.value());
+        this->load_pairing_info(); // Reload into component state
+        ESP_LOGI(TAG, "Pairing successful and info saved to flash.");
+    } else {
+        ESP_LOGE(TAG, "Pairing failed.");
+    }
+}
+
+void ZehnderFanComponent::save_pairing_info(const FanPairingInfo &info) {
+    this->preferences_.save(&info);
+}
+
+bool ZehnderFanComponent::load_pairing_info() {
+    FanPairingInfo loaded_info;
+    if (this->preferences_.load(&loaded_info)) {
+        this->pairing_info_ = loaded_info;
+        return true;
+    }
+    return false;
+}
+
+} // namespace zehnder_fan
+} // namespace esphome
