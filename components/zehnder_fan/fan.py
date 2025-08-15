@@ -4,6 +4,8 @@ from esphome.components import fan, spi
 from esphome.const import CONF_ID
 from esphome import pins
 
+DEPENDENCIES = ["spi"]
+
 # Define custom pin constants
 CONF_TXEN_PIN = "txen_pin"
 CONF_DR_PIN = "dr_pin"
@@ -25,7 +27,7 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(cv.polling_component_schema("1s"))
-    .extend(spi.spi_device_schema(cs_pin_schema=True))
+    .extend(spi.spi_device_schema(cs_pin_required=True))
 )
 
 async def to_code(config):
