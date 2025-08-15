@@ -103,11 +103,12 @@ private:
 // =========================================================================
 // 3. ESPHome Component
 // =========================================================================
-class ZehnderFanComponent : public fan::Fan, public PollingComponent {
+class ZehnderFanComponent : public fan::Fan, public PollingComponent, public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_4MHZ> {
 public:
     void setup() override;
     void loop() override;
     void dump_config() override;
+    void update() override;
 
     fan::FanTraits get_traits() override;
     void control(const fan::FanCall &call) override;
@@ -120,6 +121,9 @@ public:
     void set_ce_pin(GPIOPin *pin) { this->ce_pin_ = pin; }
     void set_txen_pin(GPIOPin *pin) { this->txen_pin_ = pin; }
     void set_dr_pin(GPIOPin *pin) { this->dr_pin_ = pin; }
+    
+    // SPI Device interface methods
+    void set_cs_pin(GPIOPin *pin) { this->cs_ = pin; }
 
 protected:
     void save_pairing_info(const FanPairingInfo &info);
@@ -136,7 +140,7 @@ protected:
     GPIOPin *dr_pin_;
 
     std::optional<FanPairingInfo> pairing_info_;
-    ESPHomePreferences preferences_;
+    ESPPreferenceObject preferences_;
 };
 
 } // namespace zehnder_fan

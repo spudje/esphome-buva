@@ -1,5 +1,6 @@
 #include "zehnder_fan.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace zehnder_fan {
@@ -136,7 +137,7 @@ std::optional<FanPairingInfo> ZehnderFanProtocol::pair() {
     this->radio_->set_rx_address(NETWORK_LINK_ID);
     this->radio_->set_mode_receive();
 
-    uint8_t my_device_id = random_uint8() & 0xFE; // Avoid 0xFF
+    uint8_t my_device_id = random_uint32() & 0xFE; // Avoid 0xFF
     if (my_device_id == 0x00) my_device_id = 1;
 
     // Frame 1: Send broadcast discovery
@@ -238,7 +239,7 @@ void ZehnderFanComponent::setup() {
     ESP_LOGCONFIG(TAG, "Setting up Zehnder Fan...");
 
     // Initialize pins and SPI
-    this->nrf_radio_.set_spi_parent(this->parent_);
+    this->nrf_radio_.set_spi_parent(this);
     this->nrf_radio_.setup_pins(this->pwr_pin_, this->ce_pin_, this->txen_pin_, this->dr_pin_);
     this->nrf_radio_.init();
 
@@ -256,6 +257,10 @@ void ZehnderFanComponent::setup() {
 
 void ZehnderFanComponent::loop() {
     // Polling logic can be added here if needed, but for now we are command-driven.
+}
+
+void ZehnderFanComponent::update() {
+    // Required by PollingComponent, but not needed for this implementation
 }
 
 void ZehnderFanComponent::dump_config() {
