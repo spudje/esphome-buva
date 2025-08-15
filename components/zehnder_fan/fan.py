@@ -1,15 +1,14 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import fan, spi
-from esphome.const import (
-    CONF_ID,
-    CONF_PWR_PIN,
-    CONF_CE_PIN,
-)
+from esphome.const import CONF_ID
 
 # Define custom pin constants
 CONF_TXEN_PIN = "txen_pin"
 CONF_DR_PIN = "dr_pin"
+CONF_PWR_PIN = "pwr_pin"
+CONF_CS_PIN = "cs_pin"  # Not used in this component, but defined for consistency
+CONF_CE_PIN = "ce_pin"
 
 zehnder_fan_ns = cg.esphome_ns.namespace("zehnder_fan")
 ZehnderFanComponent = zehnder_fan_ns.class_("ZehnderFanComponent", fan.Fan, cg.PollingComponent, spi.SPIDevice)
