@@ -26,6 +26,7 @@ wifi:
 
 # SPI configuration for nRF905
 spi:
+  id: spi_bus
   clk_pin: GPIO21
   mosi_pin: GPIO19
   miso_pin: GPIO20
@@ -44,6 +45,7 @@ fan:
   - platform: zehnder_fan
     id: ventilation_fan
     name: "Mechanical Ventilation"
+    spi_id: spi_bus
     
     # Required Pin Configuration
     cs_pin: GPIO18

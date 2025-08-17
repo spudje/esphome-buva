@@ -59,6 +59,7 @@ class NRF905Controller : public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST,
                                               spi::DATA_RATE_4MHZ> {
 public:
     void setup_pins(GPIOPin *pwr_pin, GPIOPin *ce_pin, GPIOPin *txen_pin, GPIOPin *dr_pin);
+    void set_cs_pin(GPIOPin *cs_pin) { this->cs_ = cs_pin; }
     bool init();
     void set_mode_idle();
     void set_mode_receive();
@@ -103,7 +104,7 @@ private:
 // =========================================================================
 // 3. ESPHome Component
 // =========================================================================
-class ZehnderFanComponent : public fan::Fan, public PollingComponent, public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_4MHZ> {
+class ZehnderFanComponent : public fan::Fan, public PollingComponent {
 public:
     void setup() override;
     void loop() override;
@@ -121,9 +122,8 @@ public:
     void set_ce_pin(GPIOPin *pin) { this->ce_pin_ = pin; }
     void set_txen_pin(GPIOPin *pin) { this->txen_pin_ = pin; }
     void set_dr_pin(GPIOPin *pin) { this->dr_pin_ = pin; }
-    
-    // SPI Device interface methods
-    void set_cs_pin(GPIOPin *pin) { this->cs_ = pin; }
+    void set_cs_pin(GPIOPin *pin) { this->cs_pin_ = pin; }
+    void set_spi_parent(spi::SPIComponent *parent) { this->spi_parent_ = parent; }
 
 protected:
     void save_pairing_info(const FanPairingInfo &info);
@@ -138,6 +138,8 @@ protected:
     GPIOPin *ce_pin_;
     GPIOPin *txen_pin_;
     GPIOPin *dr_pin_;
+    GPIOPin *cs_pin_;
+    spi::SPIComponent *spi_parent_;
 
     std::optional<FanPairingInfo> pairing_info_;
     ESPPreferenceObject preferences_;

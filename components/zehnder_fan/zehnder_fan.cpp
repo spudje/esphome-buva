@@ -19,6 +19,9 @@ void NRF905Controller::setup_pins(GPIOPin *pwr_pin, GPIOPin *ce_pin, GPIOPin *tx
 }
 
 bool NRF905Controller::init() {
+    // Initialize SPI device
+    this->spi_setup();
+    
     this->pwr_pin_->setup();
     this->ce_pin_->setup();
     this->txen_pin_->setup();
@@ -31,7 +34,7 @@ bool NRF905Controller::init() {
     this->write_config_registers(zehnder_config, sizeof(zehnder_config));
 
     ESP_LOGD(TAG, "NRF905 initialized.");
-    return true; // Add SPI check if necessary
+    return true;
 }
 
 void NRF905Controller::set_mode_idle() {
@@ -238,12 +241,9 @@ bool ZehnderFanProtocol::set_speed(const FanPairingInfo &pairing_info, uint8_t s
 void ZehnderFanComponent::setup() {
     ESP_LOGCONFIG(TAG, "Setting up Zehnder Fan...");
 
-    // Initialize SPI device
-    this->spi_setup();
-    this->enable();
-
-    // Initialize pins and SPI for nRF905
-    this->nrf_radio_.set_spi_parent(this->parent_);
+    // Initialize nRF905 SPI device
+    this->nrf_radio_.set_spi_parent(this->spi_parent_);
+    this->nrf_radio_.set_cs_pin(this->cs_pin_);
     this->nrf_radio_.setup_pins(this->pwr_pin_, this->ce_pin_, this->txen_pin_, this->dr_pin_);
     this->nrf_radio_.init();
 
