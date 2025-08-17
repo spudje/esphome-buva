@@ -85,24 +85,98 @@ private:
 // =========================================================================
 // 2. High-Level Fan Communication Protocol
 // =========================================================================
+
+enum class RadioOperationState {
+    IDLE,
+    TRANSMITTING,
+    WAITING_RESPONSE,
+    OPERATION_COMPLETE
+};
+
+enum class RadioOperationType {
+    NONE,
+    SET_SPEED,
+    PAIRING_DISCOVER,
+    PAIRING_JOIN,
+    PAIRING_ACK
+};
+
+struct PendingOperation {
+    RadioOperationType type;
+    RadioOperationState state;
+    uint32_t start_time;
+    uint8_t retry_count;
+    uint8_t max_retries;
+    uint32_t timeout_ms;
+    uint8_t tx_payload[FAN_FRAMESIZE];
+    
+    // Operation-specific data
+    union {
+        struct {
+            FanPairingInfo pairing_info;
+            uint8_t speed;
+            uint8_t timer_minutes;
+        } set_speed;
+        
+        struct {
+            uint8_t my_device_id;
+            FanPairingInfo current_info;
+            uint8_t pairing_step; // 0=discover, 1=join, 2=ack
+        } pairing;
+    } data;
+};
+
 class ZehnderFanProtocol {
 public:
     ZehnderFanProtocol(NRF905Controller *radio);
 
-    std::optional<FanPairingInfo> pair();
-    bool set_speed(const FanPairingInfo &pairing_info, uint8_t speed, uint8_t timer_minutes);
+    // Async interface - returns immediately
+    void start_pairing();
+    void start_set_speed(const FanPairingInfo &pairing_info, uint8_t speed, uint8_t timer_minutes);
+    
+    // Process state machine - call from loop()
+    void process();
+    
+    // Check if operation is complete
+    bool is_operation_complete() const { return pending_op_.state == RadioOperationState::OPERATION_COMPLETE; }
+    bool last_operation_successful() const { return last_operation_success_; }
+    
+    // Reset state machine for next operation
+    void reset_operation_state();
+    
+    // Get pairing result if available
+    std::optional<FanPairingInfo> get_pairing_result();
 
 private:
-    bool transmit_and_wait(size_t retries);
+    void start_transmit();
+    void handle_response();
+    void retry_or_fail();
+    void complete_operation(bool success);
+    
+    // Pairing state machine helpers
+    void setup_pairing_discover();
+    void setup_pairing_join();
+    void setup_pairing_ack();
+    void handle_pairing_response();
     
     NRF905Controller *radio_;
     uint8_t rx_buffer_[FAN_FRAMESIZE]{0};
+    PendingOperation pending_op_{};
+    bool last_operation_success_{false};
+    std::optional<FanPairingInfo> pairing_result_;
 };
 
 
 // =========================================================================
 // 3. ESPHome Component
 // =========================================================================
+
+enum class ComponentOperationState {
+    IDLE,
+    SETTING_SPEED,
+    PAIRING
+};
+
 class ZehnderFanComponent : public fan::Fan, public PollingComponent {
 public:
     void setup() override;
@@ -128,6 +202,8 @@ protected:
     void save_pairing_info(const FanPairingInfo &info);
     bool load_pairing_info();
     void clear_pairing_info();
+    
+    void handle_operation_complete();
 
     NRF905Controller nrf_radio_;
     std::unique_ptr<ZehnderFanProtocol> fan_protocol_;
@@ -141,6 +217,12 @@ protected:
     spi::SPIComponent *spi_parent_;
 
     std::optional<FanPairingInfo> pairing_info_;
+    ComponentOperationState component_state_{ComponentOperationState::IDLE};
+    
+    // Pending fan call data
+    bool pending_state_change_{false};
+    bool pending_fan_state_{false};
+    int pending_fan_speed_{1};
 };
 
 } // namespace zehnder_fan
