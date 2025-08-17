@@ -4,7 +4,6 @@
 #include "esphome/core/hal.h"
 #include "esphome/components/spi/spi.h"
 #include "esphome/components/fan/fan.h"
-#include "esphome/core/preferences.h"
 
 #include <optional>
 
@@ -142,7 +141,6 @@ protected:
     spi::SPIComponent *spi_parent_;
 
     std::optional<FanPairingInfo> pairing_info_;
-    ESPPreferenceObject preferences_;
 };
 
 } // namespace zehnder_fan

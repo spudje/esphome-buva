@@ -1,11 +1,15 @@
 #include "zehnder_fan.h"
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 namespace esphome {
 namespace zehnder_fan {
 
 static const char *const TAG = "zehnder_fan";
+static const char *const NVS_NAMESPACE = "zehnder_fan";
+static const char *const NVS_PAIRING_KEY = "pairing_info";
 
 // =========================================================================
 // 1. NRF905Controller Implementation
@@ -249,11 +253,16 @@ void ZehnderFanComponent::setup() {
 
     this->fan_protocol_ = make_unique<ZehnderFanProtocol>(&this->nrf_radio_);
     
-    // Setup preferences for storing pairing data
-    this->preferences_ = global_preferences->make_preference<FanPairingInfo>(this->get_object_id_hash());
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
 
     if (this->load_pairing_info()) {
-        ESP_LOGI(TAG, "Loaded pairing info from flash.");
+        ESP_LOGI(TAG, "Loaded pairing info from NVS.");
     } else {
         ESP_LOGW(TAG, "No pairing info found. Fan needs to be paired.");
     }
@@ -330,25 +339,81 @@ void ZehnderFanComponent::start_pairing() {
 }
 
 void ZehnderFanComponent::save_pairing_info(const FanPairingInfo &info) {
-    this->preferences_.save(&info);
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+        return;
+    }
+
+    err = nvs_set_blob(nvs_handle, NVS_PAIRING_KEY, &info, sizeof(FanPairingInfo));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error (%s) writing pairing info to NVS!", esp_err_to_name(err));
+    } else {
+        err = nvs_commit(nvs_handle);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Error (%s) committing NVS!", esp_err_to_name(err));
+        } else {
+            ESP_LOGD(TAG, "Pairing info saved to NVS successfully.");
+        }
+    }
+
+    nvs_close(nvs_handle);
 }
 
 bool ZehnderFanComponent::load_pairing_info() {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Error (%s) opening NVS handle for reading!", esp_err_to_name(err));
+        this->pairing_info_ = std::nullopt;
+        return false;
+    }
+
     FanPairingInfo loaded_info;
-    if (this->preferences_.load(&loaded_info)) {
+    size_t required_size = sizeof(FanPairingInfo);
+    err = nvs_get_blob(nvs_handle, NVS_PAIRING_KEY, &loaded_info, &required_size);
+    nvs_close(nvs_handle);
+
+    if (err == ESP_OK && required_size == sizeof(FanPairingInfo)) {
         ESP_LOGI(TAG, "Loaded pairing info: Network ID 0x%08X, Fan ID 0x%02X, My Device ID 0x%02X",
                  loaded_info.network_id, loaded_info.main_unit_id, loaded_info.my_device_id);
         this->pairing_info_ = loaded_info;
         return true;
     } else {
-        ESP_LOGW(TAG, "No pairing info found in flash. Device is not paired.");
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG, "No pairing info found in NVS. Device is not paired.");
+        } else {
+            ESP_LOGW(TAG, "Error (%s) reading pairing info from NVS!", esp_err_to_name(err));
+        }
         this->pairing_info_ = std::nullopt;
         return false;
     }
 }
 
 void ZehnderFanComponent::clear_pairing_info() {
-    this->preferences_.reset();
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error (%s) opening NVS handle for clearing!", esp_err_to_name(err));
+        return;
+    }
+
+    err = nvs_erase_key(nvs_handle, NVS_PAIRING_KEY);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs_handle);
+        if (err == ESP_OK) {
+            ESP_LOGD(TAG, "Pairing info cleared from NVS successfully.");
+        } else {
+            ESP_LOGE(TAG, "Error (%s) committing NVS after clearing!", esp_err_to_name(err));
+        }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGD(TAG, "No pairing info to clear in NVS.");
+    } else {
+        ESP_LOGE(TAG, "Error (%s) clearing pairing info from NVS!", esp_err_to_name(err));
+    }
+
+    nvs_close(nvs_handle);
     this->pairing_info_ = std::nullopt;
 }
 
