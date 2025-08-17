@@ -336,10 +336,20 @@ void ZehnderFanComponent::save_pairing_info(const FanPairingInfo &info) {
 bool ZehnderFanComponent::load_pairing_info() {
     FanPairingInfo loaded_info;
     if (this->preferences_.load(&loaded_info)) {
+        ESP_LOGI(TAG, "Loaded pairing info: Network ID 0x%08X, Fan ID 0x%02X, My Device ID 0x%02X",
+                 loaded_info.network_id, loaded_info.main_unit_id, loaded_info.my_device_id);
         this->pairing_info_ = loaded_info;
         return true;
+    } else {
+        ESP_LOGW(TAG, "No pairing info found in flash. Device is not paired.");
+        this->pairing_info_ = std::nullopt;
+        return false;
     }
-    return false;
+}
+
+void ZehnderFanComponent::clear_pairing_info() {
+    this->preferences_.reset();
+    this->pairing_info_ = std::nullopt;
 }
 
 } // namespace zehnder_fan
