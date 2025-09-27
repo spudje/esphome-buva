@@ -430,8 +430,8 @@ void ZehnderFanComponent::dump_config() {
 }
 
 fan::FanTraits ZehnderFanComponent::get_traits() {
-    // The fan supports Off, Low, Medium, High speeds.
-    return fan::FanTraits(false, true, false, 3);
+    // The fan supports Off, Low, Medium, High, Max speeds.
+    return fan::FanTraits(false, true, false, 4);
 }
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
@@ -462,6 +462,7 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
             case 1: fan_speed = FAN_SPEED_LOW; break;
             case 2: fan_speed = FAN_SPEED_MEDIUM; break;
             case 3: fan_speed = FAN_SPEED_HIGH; break;
+            case 4: fan_speed = FAN_SPEED_MAX; break;
         }
     }
     
