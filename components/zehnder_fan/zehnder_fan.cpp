@@ -34,7 +34,9 @@ bool NRF905Controller::init() {
     this->set_mode_idle();
 
     // Zehnder nRF905 configuration profile from fan.h
-    const uint8_t zehnder_config[] = {0x76, 0x2E, 0x44, 0x10, 0x10, 0xA5, 0x5A, 0x5A, 0xA5, 0xDB};
+    //const uint8_t zehnder_config[] = {0x76, 0x2E, 0x44, 0x10, 0x10, 0xA5, 0x5A, 0x5A, 0xA5, 0xDB};
+    //Change for BUVA
+    const uint8_t zehnder_config[] = {0x75, 0x2E, 0x44, 0x10, 0x10, 0xA5, 0x5A, 0x5A, 0xA5, 0xDB};
     this->write_config_registers(zehnder_config, sizeof(zehnder_config));
 
     ESP_LOGD(TAG, "NRF905 initialized.");
@@ -73,8 +75,10 @@ void NRF905Controller::set_tx_address(uint32_t address) {
 
 void NRF905Controller::set_rx_address(uint32_t address) {
     // RX address is set via config registers, not a direct command
+    // Zehnder: 0x76, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
+    // Chenged for BUVA in 0x75, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
     const uint8_t config_update[] = {
-        0x76, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
+        0x75, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
         (uint8_t)((address >> 0) & 0xFF),
         (uint8_t)((address >> 8) & 0xFF),
         (uint8_t)((address >> 16) & 0xFF),
