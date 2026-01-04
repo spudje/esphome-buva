@@ -391,24 +391,26 @@ void ZehnderFanComponent::setup() {
     this->fan_protocol_ = make_unique<ZehnderFanProtocol>(&this->nrf_radio_);
     
     // Debugging added, provided by Gemini
-    // --- NEW DEBUG BLOCK START ---
-    // Wait a tiny bit for the 'init' power-up to stabilize
-    delay(20); 
+// --- NEW DEBUG BLOCK START ---
+    delay(50); // Give the chip plenty of time to wake up
+    
+    ESP_LOGI("NRF_DIAG", "Testing SPI connection directly...");
+    
+    // Manual SPI Read: Command 0x10 is "Read Config Register" on nRF905
+    this->enable_chip_select(); // Pull CSN low
+    this->write_byte(0x10);     // Send "Read Config" command
+    uint8_t test_byte = this->read_byte(); // Read the first byte of config
+    this->disable_chip_select(); // Pull CSN high
 
-    uint8_t conf[5];
-    // We call the internal radio object to read its registers
-    this->nrf_radio_.get_config(conf); 
+    ESP_LOGI("NRF_DIAG", "First byte of Config Register: %02X", test_byte);
 
-    ESP_LOGI("NRF_DIAG", "SPI Handshake Check: %02X %02X %02X %02X %02X", 
-             conf[0], conf[1], conf[2], conf[3], conf[4]);
-
-    if (conf[0] == 0x00 || conf[0] == 0xFF) {
-        ESP_LOGE("NRF_DIAG", "RESULT: FAILED! The ESP32 cannot see the nRF905. Check wiring/power.");
+    if (test_byte == 0x00 || test_byte == 0xFF) {
+        ESP_LOGE("NRF_DIAG", "RESULT: FAILED! SPI is returning %02X. Check MISO/MOSI/CLK wiring.", test_byte);
     } else {
-        ESP_LOGI("NRF_DIAG", "RESULT: SUCCESS! The nRF905 is alive and communicating.");
+        ESP_LOGI("NRF_DIAG", "RESULT: SUCCESS! Communication established (Read: %02X).", test_byte);
     }
 
-    delay(20);
+    delay(50);
     // --- NEW DEBUG BLOCK END ---
 
     // Initialize NVS
