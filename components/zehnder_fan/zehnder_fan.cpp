@@ -53,6 +53,7 @@ void NRF905Controller::set_mode_receive() {
     this->pwr_pin_->digital_write(true);
     this->txen_pin_->digital_write(false);
     this->ce_pin_->digital_write(true);
+    ESP_LOGD(TAG, "Set to receive.");
 }
 
 void NRF905Controller::set_mode_transmit() {
@@ -61,9 +62,11 @@ void NRF905Controller::set_mode_transmit() {
     delayMicroseconds(100);
     this->txen_pin_->digital_write(true);
     this->ce_pin_->digital_write(true);
+    ESP_LOGD(TAG, "Set to transmit.");
 }
 
 void NRF905Controller::set_tx_address(uint32_t address) {
+    ESP_LOGD(TAG, "TX Address: %u.", address);
     this->enable();
     this->write_byte(0x22); // W_TX_ADDRESS
     this->write_byte((address >> 0) & 0xFF);
@@ -90,6 +93,7 @@ void NRF905Controller::set_rx_address(uint32_t address) {
 
 
 void NRF905Controller::write_tx_payload(const uint8_t *payload, size_t size) {
+    ESP_LOGD(TAG, "Write TX payload: %u.", payload);
     this->enable();
     this->write_byte(0x20); // W_TX_PAYLOAD
     this->write_array(payload, size);
@@ -100,6 +104,7 @@ bool NRF905Controller::read_rx_payload(uint8_t *buffer, size_t size) {
     if (!this->is_data_ready()) {
         return false;
     }
+    ESP_LOGD(TAG, "Read RX payload: %u.", buffer);
     this->enable();
     this->write_byte(0x24); // R_RX_PAYLOAD
     this->read_array(buffer, size);
@@ -108,6 +113,7 @@ bool NRF905Controller::read_rx_payload(uint8_t *buffer, size_t size) {
 }
 
 void NRF905Controller::write_config_registers(const uint8_t *config, size_t size) {
+    ESP_LOGD(TAG, "Config: %u.", config);
     this->set_mode_idle();
     this->enable();
     this->write_byte(0x00); // W_CONFIG
