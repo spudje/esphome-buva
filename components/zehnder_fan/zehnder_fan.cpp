@@ -390,6 +390,27 @@ void ZehnderFanComponent::setup() {
 
     this->fan_protocol_ = make_unique<ZehnderFanProtocol>(&this->nrf_radio_);
     
+    // Debugging added, provided by Gemini
+    // --- NEW DEBUG BLOCK START ---
+    // Wait a tiny bit for the 'init' power-up to stabilize
+    delay(20); 
+
+    uint8_t conf[5];
+    // We call the internal radio object to read its registers
+    this->nrf_radio_.get_config(conf); 
+
+    ESP_LOGI("NRF_DIAG", "SPI Handshake Check: %02X %02X %02X %02X %02X", 
+             conf[0], conf[1], conf[2], conf[3], conf[4]);
+
+    if (conf[0] == 0x00 || conf[0] == 0xFF) {
+        ESP_LOGE("NRF_DIAG", "RESULT: FAILED! The ESP32 cannot see the nRF905. Check wiring/power.");
+    } else {
+        ESP_LOGI("NRF_DIAG", "RESULT: SUCCESS! The nRF905 is alive and communicating.");
+    }
+
+    delay(20);
+    // --- NEW DEBUG BLOCK END ---
+
     // Initialize NVS
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
