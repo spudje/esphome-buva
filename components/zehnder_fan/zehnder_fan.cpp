@@ -390,29 +390,6 @@ void ZehnderFanComponent::setup() {
 
     this->fan_protocol_ = make_unique<ZehnderFanProtocol>(&this->nrf_radio_);
     
-    // Debugging added, provided by Gemini
-// --- NEW DEBUG BLOCK START ---
-    delay(50); // Give the chip plenty of time to wake up
-    
-    ESP_LOGI("NRF_DIAG", "Testing SPI connection directly...");
-    
-    // Manual SPI Read: Command 0x10 is "Read Config Register" on nRF905
-    this->enable_chip_select(); // Pull CSN low
-    this->write_byte(0x10);     // Send "Read Config" command
-    uint8_t test_byte = this->read_byte(); // Read the first byte of config
-    this->disable_chip_select(); // Pull CSN high
-
-    ESP_LOGI("NRF_DIAG", "First byte of Config Register: %02X", test_byte);
-
-    if (test_byte == 0x00 || test_byte == 0xFF) {
-        ESP_LOGE("NRF_DIAG", "RESULT: FAILED! SPI is returning %02X. Check MISO/MOSI/CLK wiring.", test_byte);
-    } else {
-        ESP_LOGI("NRF_DIAG", "RESULT: SUCCESS! Communication established (Read: %02X).", test_byte);
-    }
-
-    delay(50);
-    // --- NEW DEBUG BLOCK END ---
-
     // Initialize NVS
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
