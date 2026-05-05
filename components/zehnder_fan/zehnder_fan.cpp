@@ -207,7 +207,7 @@ void ZehnderFanProtocol::start_query_device(const FanPairingInfo &pairing_info) 
 
     memset(pending_op_.tx_payload, 0, FAN_FRAMESIZE);
     pending_op_.tx_payload[0] = pairing_info.main_unit_type;
-    pending_op_.tx_payload[1] = 0x00; // Hardcoded to 0x00
+    pending_op_.tx_payload[1] = pairing_info.main_unit_id;
     pending_op_.tx_payload[2] = FAN_TYPE_REMOTE_CONTROL;
     pending_op_.tx_payload[3] = pairing_info.my_device_id;
     pending_op_.tx_payload[4] = 0xFA; // TTL
