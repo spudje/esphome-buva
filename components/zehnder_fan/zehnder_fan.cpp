@@ -335,8 +335,7 @@ void ZehnderFanProtocol::setup_pairing_ack() {
     pending_op_.tx_payload[0] = FAN_TYPE_MAIN_UNIT;
     pending_op_.tx_payload[1] = info.main_unit_id;
     pending_op_.tx_payload[2] = FAN_TYPE_REMOTE_CONTROL;
-    //pending_op_.tx_payload[3] = pending_op_.data.pairing.my_device_id;
-    pending_op_.tx_payload[3] = 0x00
+    pending_op_.tx_payload[3] = pending_op_.data.pairing.my_device_id;
     pending_op_.tx_payload[4] = 0xFA;
     pending_op_.tx_payload[5] = FAN_FRAME_0B;
     
