@@ -29,7 +29,7 @@ CONFIG_SCHEMA = (
             cv.Required(spi.CONF_SPI_ID): cv.use_id(spi.SPIComponent),
         }
     )
-    .extend(cv.polling_component_schema("1s"))
+    .extend(cv.polling_component_schema("10s"))
 )
 
 async def to_code(config):

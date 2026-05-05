@@ -79,7 +79,7 @@ void NRF905Controller::set_tx_address(uint32_t address) {
 void NRF905Controller::set_rx_address(uint32_t address) {
     // RX address is set via config registers, not a direct command
     // Zehnder: 0x76, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
-    // Changed for BUVA in 0x75, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
+    // Chenged for BUVA in 0x75, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
     const uint8_t config_update[] = {
         0x75, 0x2E, 0x44, 0x10, 0x10, // Keep first 5 bytes
         (uint8_t)((address >> 0) & 0xFF),
@@ -175,7 +175,7 @@ void ZehnderFanProtocol::start_set_speed(const FanPairingInfo &pairing_info, uin
     memset(pending_op_.tx_payload, 0, FAN_FRAMESIZE);
     pending_op_.tx_payload[0] = FAN_TYPE_MAIN_UNIT;
     //pending_op_.tx_payload[1] = pairing_info.main_unit_id;
-    pending_op_.tx_payload[1] = 0x00; // Hardcoded to 0x00
+    pending_op_.tx_payload[1] = 0x00;
     pending_op_.tx_payload[2] = FAN_TYPE_REMOTE_CONTROL;
     pending_op_.tx_payload[3] = pairing_info.my_device_id;
     pending_op_.tx_payload[4] = 0xFA; // TTL
@@ -184,36 +184,6 @@ void ZehnderFanProtocol::start_set_speed(const FanPairingInfo &pairing_info, uin
     pending_op_.tx_payload[7] = speed;
     pending_op_.tx_payload[8] = timer_minutes;
     
-    start_transmit();
-}
-
-void ZehnderFanProtocol::start_query_device(const FanPairingInfo &pairing_info) {
-    if (pending_op_.state != RadioOperationState::IDLE) {
-        ESP_LOGV(TAG, "Cannot query device: Radio operation already in progress");
-        return;
-    }
-
-    ESP_LOGD(TAG, "Querying fan for current speed...");
-
-    pending_op_.type = RadioOperationType::QUERY_DEVICE;
-    pending_op_.data.set_speed.pairing_info = pairing_info;
-    pending_op_.max_retries = FAN_TX_RETRIES;
-    pending_op_.retry_count = 0;
-    pending_op_.timeout_ms = FAN_REPLY_TIMEOUT_MS;
-
-    radio_->set_mode_idle();
-    radio_->set_tx_address(pairing_info.network_id);
-    radio_->set_rx_address(pairing_info.network_id);
-
-    memset(pending_op_.tx_payload, 0, FAN_FRAMESIZE);
-    pending_op_.tx_payload[0] = pairing_info.main_unit_type;
-    pending_op_.tx_payload[1] = 0x00; // Hardcoded to 0x00
-    pending_op_.tx_payload[2] = FAN_TYPE_REMOTE_CONTROL;
-    pending_op_.tx_payload[3] = pairing_info.my_device_id;
-    pending_op_.tx_payload[4] = 0xFA; // TTL
-    pending_op_.tx_payload[5] = FAN_TYPE_QUERY_DEVICE;
-    pending_op_.tx_payload[6] = 0x00; // No parameters
-
     start_transmit();
 }
 
@@ -261,19 +231,7 @@ void ZehnderFanProtocol::handle_response() {
         // For set speed, any response is considered success
         ESP_LOGD(TAG, "Set speed command acknowledged.");
         complete_operation(true);
-
-    } else if (pending_op_.type == RadioOperationType::QUERY_DEVICE) {
-        if (rx_buffer_[5] == FAN_TYPE_FAN_SETTINGS) {
-            uint8_t speed = rx_buffer_[7];
-            ESP_LOGD(TAG, "Received fan settings: speed=0x%02X voltage=%u timer=%u",
-                     speed, rx_buffer_[8], rx_buffer_[9]);
-            query_result_speed_ = speed;
-            complete_operation(true);
-        } else {
-            ESP_LOGW(TAG, "Query: unexpected response frame 0x%02X", rx_buffer_[5]);
-            complete_operation(false);
-        }
-
+        
     } else if (pending_op_.type >= RadioOperationType::PAIRING_DISCOVER && 
                pending_op_.type <= RadioOperationType::PAIRING_ACK) {
         handle_pairing_response();
@@ -465,11 +423,7 @@ void ZehnderFanComponent::loop() {
 }
 
 void ZehnderFanComponent::update() {
-    if (this->pairing_info_.has_value() &&
-        this->component_state_ == ComponentOperationState::IDLE) {
-        this->component_state_ = ComponentOperationState::QUERYING;
-        this->fan_protocol_->start_query_device(this->pairing_info_.value());
-    }
+    // Required by PollingComponent, but not needed for this implementation
 }
 
 void ZehnderFanComponent::dump_config() {
@@ -564,17 +518,6 @@ void ZehnderFanComponent::handle_operation_complete() {
             ESP_LOGW(TAG, "Failed to set fan speed");
         }
         
-    } else if (this->component_state_ == ComponentOperationState::QUERYING) {
-        if (success) {
-            uint8_t speed = this->fan_protocol_->get_query_speed();
-            this->state = speed > 0;
-            this->speed = speed;
-            this->publish_state();
-            ESP_LOGD(TAG, "Fan state updated from poll: speed=%u", speed);
-        } else {
-            ESP_LOGW(TAG, "Failed to query fan speed");
-        }
-
     } else if (this->component_state_ == ComponentOperationState::PAIRING) {
         if (success) {
             auto result = this->fan_protocol_->get_pairing_result();

@@ -26,7 +26,6 @@ enum {
     FAN_TYPE_REMOTE_CONTROL = 0x03,
 };
 enum {
-    FAN_TYPE_QUERY_DEVICE = 0x01,
     FAN_FRAME_SETSPEED = 0x02,
     FAN_FRAME_SETTIMER = 0x03,
     FAN_NETWORK_JOIN_REQUEST = 0x04,
@@ -99,7 +98,6 @@ enum class RadioOperationState {
 enum class RadioOperationType {
     NONE,
     SET_SPEED,
-    QUERY_DEVICE,
     PAIRING_DISCOVER,
     PAIRING_JOIN,
     PAIRING_ACK
@@ -137,7 +135,6 @@ public:
     // Async interface - returns immediately
     void start_pairing();
     void start_set_speed(const FanPairingInfo &pairing_info, uint8_t speed, uint8_t timer_minutes);
-    void start_query_device(const FanPairingInfo &pairing_info);
     
     // Process state machine - call from loop()
     void process();
@@ -151,9 +148,6 @@ public:
     
     // Get pairing result if available
     std::optional<FanPairingInfo> get_pairing_result();
-
-    // Get query result
-    uint8_t get_query_speed() const { return query_result_speed_; }
 
 private:
     void start_transmit();
@@ -172,7 +166,6 @@ private:
     PendingOperation pending_op_{};
     bool last_operation_success_{false};
     std::optional<FanPairingInfo> pairing_result_;
-    uint8_t query_result_speed_{0};
 };
 
 
@@ -183,8 +176,7 @@ private:
 enum class ComponentOperationState {
     IDLE,
     SETTING_SPEED,
-    PAIRING,
-    QUERYING
+    PAIRING
 };
 
 class ZehnderFanComponent : public fan::Fan, public PollingComponent {
