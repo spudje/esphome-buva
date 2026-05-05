@@ -176,7 +176,8 @@ void ZehnderFanProtocol::start_set_speed(const FanPairingInfo &pairing_info, uin
     pending_op_.tx_payload[0] = FAN_TYPE_MAIN_UNIT;
     pending_op_.tx_payload[1] = pairing_info.main_unit_id;
     pending_op_.tx_payload[2] = FAN_TYPE_REMOTE_CONTROL;
-    pending_op_.tx_payload[3] = pairing_info.my_device_id;
+    //pending_op_.tx_payload[3] = pairing_info.my_device_id;
+    pending_op_.tx_payload[3] = 0x00;
     pending_op_.tx_payload[4] = 0xFA; // TTL
     pending_op_.tx_payload[5] = (timer_minutes > 0) ? FAN_FRAME_SETTIMER : FAN_FRAME_SETSPEED;
     pending_op_.tx_payload[6] = (timer_minutes > 0) ? 0x02 : 0x01; // Number of parameters
