@@ -198,7 +198,7 @@ void ZehnderFanProtocol::start_query_device(const FanPairingInfo &pairing_info) 
     pending_op_.type = RadioOperationType::QUERY_DEVICE;
     pending_op_.data.set_speed.pairing_info = pairing_info;
     //pending_op_.max_retries = FAN_TX_RETRIES;
-    pending_op_.max_retries = 2;
+    pending_op_.max_retries = 5;
     pending_op_.retry_count = 0;
     pending_op_.timeout_ms = FAN_REPLY_TIMEOUT_MS;
 

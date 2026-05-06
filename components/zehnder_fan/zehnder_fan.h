@@ -14,7 +14,7 @@ namespace zehnder_fan {
 static const uint32_t NRF905_XTAL_FREQUENCY = 16000000;
 static const uint8_t FAN_FRAMESIZE = 16;
 static const uint8_t FAN_TX_FRAMES = 4;
-static const uint8_t FAN_TX_RETRIES = 5; // Changed from 50
+static const uint8_t FAN_TX_RETRIES = 10; // Changed from 50
 static const uint32_t FAN_REPLY_TIMEOUT_MS = 1000; // Changed from 500
 static const uint32_t NETWORK_LINK_ID = 0xA55A5AA5;
 // Mijn oude code: static const uint32_t NETWORK_LINK_ID = 0x89816EA9;
