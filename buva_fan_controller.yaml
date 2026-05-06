@@ -14,11 +14,11 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "redacted"
+    key: !secret esphome_buvaventilatie_api_key
 
 ota:
   - platform: esphome
-    password: "redacted"
+    password: !secret esphome_buvaventilatie_ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -27,10 +27,10 @@ wifi:
 # SPI configuration for nRF905
 spi:
   id: spi_bus
-  clk_pin: GPIO18
-  mosi_pin: GPIO23
-  miso_pin: GPIO19
-  interface: hardware
+  clk_pin: GPIO14
+  mosi_pin: GPIO13
+  miso_pin: GPIO12
+  interface: software
 
 # External components
 external_components:
@@ -46,7 +46,7 @@ external_components:
 fan:
   - platform: zehnder_fan
     id: ventilation_fan
-    name: "Mechanical Ventilation"
+    name: Mechanical Ventilation
     spi_id: spi_bus
     
     # Required Pin Configuration
@@ -56,11 +56,11 @@ fan:
     # txen_pin: GPIO7
     # dr_pin: GPIO23
 
-    cs_pin: GPIO5
-    pwr_pin: GPIO22
-    ce_pin: GPIO26
+    cs_pin: GPIO15
+    pwr_pin: GPIO26
+    ce_pin: GPIO27
     txen_pin: GPIO25
-    dr_pin: GPIO14    
+    dr_pin: GPIO35    
 
     # cd_pin: GPIO33
     # am_pin: GPIO32
@@ -68,10 +68,10 @@ fan:
 
 button:
   - platform: restart
-    name: "Restart Controller"
+    name: Restart Controller
   - platform: template
-    name: "Pair with Fan"
-    icon: "mdi:wifi"
+    name: Pair with Fan
+    icon: mdi:wifi
     entity_category: config
     on_press:
       - lambda: |-
