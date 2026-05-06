@@ -14,7 +14,7 @@ namespace zehnder_fan {
 static const uint32_t NRF905_XTAL_FREQUENCY = 16000000;
 static const uint8_t FAN_FRAMESIZE = 16;
 static const uint8_t FAN_TX_FRAMES = 4;
-static const uint8_t FAN_TX_RETRIES = 10; // Changed from 50
+static const uint8_t FAN_TX_RETRIES = 5; // Changed from 50
 static const uint32_t FAN_REPLY_TIMEOUT_MS = 1000; // Changed from 500
 static const uint32_t NETWORK_LINK_ID = 0xA55A5AA5;
 // Mijn oude code: static const uint32_t NETWORK_LINK_ID = 0x89816EA9;
@@ -26,7 +26,7 @@ enum {
     FAN_TYPE_REMOTE_CONTROL = 0x03,
 };
 enum {
-    FAN_TYPE_QUERY_DEVICE = 0x01,
+    FAN_FRAME_SETVOLTAGE = 0x01,
     FAN_FRAME_SETSPEED = 0x02,
     FAN_FRAME_SETTIMER = 0x03,
     FAN_NETWORK_JOIN_REQUEST = 0x04,
@@ -35,6 +35,10 @@ enum {
     FAN_TYPE_FAN_SETTINGS = 0x07,
     FAN_FRAME_0B = 0x0B,
     FAN_NETWORK_JOIN_ACK = 0x0C,
+    // FAN_NETWORK_JOIN_FINISH = 0x0D,
+    FAN_TYPE_QUERY_NETWORK = 0x0D,
+    FAN_TYPE_QUERY_DEVICE = 0x10,
+    FAN_FRAME_SETVOLTAGE_REPLY = 0x1D
 };
 enum {
     FAN_SPEED_AUTO = 0x00,

@@ -206,8 +206,10 @@ void ZehnderFanProtocol::start_query_device(const FanPairingInfo &pairing_info) 
     radio_->set_rx_address(pairing_info.network_id);
 
     memset(pending_op_.tx_payload, 0, FAN_FRAMESIZE);
-    pending_op_.tx_payload[0] = pairing_info.main_unit_type;
-    pending_op_.tx_payload[1] = 0x00;
+    //pending_op_.tx_payload[0] = pairing_info.main_unit_type;
+    pending_op_.tx_payload[0] = FAN_TYPE_MAIN_UNIT;
+    pending_op_.tx_payload[1] = pairing_info.main_unit_id;
+    //pending_op_.tx_payload[1] = 0x00;
     pending_op_.tx_payload[2] = FAN_TYPE_REMOTE_CONTROL;
     pending_op_.tx_payload[3] = pairing_info.my_device_id;
     pending_op_.tx_payload[4] = 0xFA; // TTL
@@ -263,7 +265,7 @@ void ZehnderFanProtocol::handle_response() {
         complete_operation(true);
 
     } else if (pending_op_.type == RadioOperationType::QUERY_DEVICE) {
-        if (rx_buffer_[5] == FAN_TYPE_FAN_SETTINGS || rx_buffer_[5] == FAN_FRAME_SETSPEED) {
+        if (rx_buffer_[5] == FAN_TYPE_FAN_SETTINGS) {
             uint8_t speed = rx_buffer_[7];
             ESP_LOGD(TAG, "Received fan settings: speed=0x%02X voltage=%u timer=%u",
                      speed, rx_buffer_[8], rx_buffer_[9]);
