@@ -197,7 +197,8 @@ void ZehnderFanProtocol::start_query_device(const FanPairingInfo &pairing_info) 
 
     pending_op_.type = RadioOperationType::QUERY_DEVICE;
     pending_op_.data.set_speed.pairing_info = pairing_info;
-    pending_op_.max_retries = FAN_TX_RETRIES;
+    //pending_op_.max_retries = FAN_TX_RETRIES;
+    pending_op_.max_retries = 2;
     pending_op_.retry_count = 0;
     pending_op_.timeout_ms = FAN_REPLY_TIMEOUT_MS;
 
@@ -312,6 +313,7 @@ std::optional<FanPairingInfo> ZehnderFanProtocol::get_pairing_result() {
 void ZehnderFanProtocol::reset_operation_state() {
     pending_op_.state = RadioOperationState::IDLE;
     pending_op_.type = RadioOperationType::NONE;
+    pending_op_.retry_count = 0;
     radio_->set_mode_idle();
 }
 
@@ -501,8 +503,18 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
     
     // Check if radio is busy
     if (this->component_state_ != ComponentOperationState::IDLE) {
-        ESP_LOGW(TAG, "Cannot control fan: Radio operation in progress, ignoring request.");
-        return;
+    //     ESP_LOGW(TAG, "Cannot control fan: Radio operation in progress, ignoring request.");
+    //     return;
+    // }
+        if (this->component_state_ == ComponentOperationState::QUERYING) {
+            // Cancel the query, speed control takes priority
+            ESP_LOGD(TAG, "Interrupting query for speed command");
+            this->fan_protocol_->reset_operation_state();
+            this->component_state_ = ComponentOperationState::IDLE;
+        } else {
+            ESP_LOGW(TAG, "Cannot control fan: Radio operation in progress, ignoring request.");
+            return;
+        }
     }
 
     // Store pending state changes
