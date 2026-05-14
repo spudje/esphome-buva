@@ -575,12 +575,13 @@ void ZehnderFanComponent::handle_operation_complete() {
                 // Previously: this->state = this->pending_fan_state_; — fan always on now
                 this->state = true;
                 this->speed = this->pending_fan_speed_;
-                // Previously: this->preset_mode = "X"; — field privatised in ESPHome 2026.4, use setter
+                // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
+                // Now: own the string in current_preset_mode_, override get_preset_mode()
                 switch (this->pending_fan_speed_) {
-                    case 1: this->set_preset_mode("Low");    break;
-                    case 2: this->set_preset_mode("Medium"); break;
-                    case 3: this->set_preset_mode("High");   break;
-                    case 4: this->set_preset_mode("Max");    break;
+                    case 1: this->current_preset_mode_ = "Low";    break;
+                    case 2: this->current_preset_mode_ = "Medium"; break;
+                    case 3: this->current_preset_mode_ = "High";   break;
+                    case 4: this->current_preset_mode_ = "Max";    break;
                 }
                 this->pending_state_change_ = false;
                 this->publish_state();
@@ -596,13 +597,14 @@ void ZehnderFanComponent::handle_operation_complete() {
             // Previously: this->state = speed > 0; — fan always on now
             this->state = true;
             this->speed = speed;
-            // Previously: this->preset_mode = "X"; — field privatised in ESPHome 2026.4, use setter
+            // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
+            // Now: own the string in current_preset_mode_, override get_preset_mode()
             switch (speed) {
-                case FAN_SPEED_LOW:    this->set_preset_mode("Low");    break;
-                case FAN_SPEED_MEDIUM: this->set_preset_mode("Medium"); break;
-                case FAN_SPEED_HIGH:   this->set_preset_mode("High");   break;
-                case FAN_SPEED_MAX:    this->set_preset_mode("Max");    break;
-                default:               this->set_preset_mode("Low");    break;
+                case FAN_SPEED_LOW:    this->current_preset_mode_ = "Low";    break;
+                case FAN_SPEED_MEDIUM: this->current_preset_mode_ = "Medium"; break;
+                case FAN_SPEED_HIGH:   this->current_preset_mode_ = "High";   break;
+                case FAN_SPEED_MAX:    this->current_preset_mode_ = "Max";    break;
+                default:               this->current_preset_mode_ = "Low";    break;
             }
             this->publish_state();
             ESP_LOGD(TAG, "Fan state updated from poll: speed=%u", speed);
