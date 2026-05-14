@@ -491,8 +491,10 @@ void ZehnderFanComponent::dump_config() {
 }
 
 fan::FanTraits ZehnderFanComponent::get_traits() {
-    // The fan supports Off, Low, Medium, High, Max speeds.
-    return fan::FanTraits(false, true, false, 4);
+    // Previously: return fan::FanTraits(false, true, false, 4);  // speed slider with 4 steps
+    fan::FanTraits traits(false, false, false, 0);
+    traits.set_supported_preset_modes({"Low", "Medium", "High", "Max"});
+    return traits;
 }
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
@@ -500,14 +502,18 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
         ESP_LOGE(TAG, "Cannot control fan: Not paired.");
         return;
     }
-    
+
+    // Fan has no off state — always runs at a preset speed
+    // Previously: handled call.get_state() == false by sending FAN_SPEED_AUTO
+    if (call.get_state().has_value() && !*call.get_state()) {
+        ESP_LOGD(TAG, "Ignoring turn-off request: fan always runs.");
+        return;
+    }
+
     // Check if radio is busy
     if (this->component_state_ != ComponentOperationState::IDLE) {
-    //     ESP_LOGW(TAG, "Cannot control fan: Radio operation in progress, ignoring request.");
-    //     return;
-    // }
         if (this->component_state_ == ComponentOperationState::QUERYING) {
-            // Cancel the query, speed control takes priority
+            // Cancel the query, preset control takes priority
             ESP_LOGD(TAG, "Interrupting query for speed command");
             this->fan_protocol_->reset_operation_state();
             this->component_state_ = ComponentOperationState::IDLE;
@@ -517,34 +523,28 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
         }
     }
 
-    // Store pending state changes
-    if (call.get_state().has_value()) {
-        this->pending_fan_state_ = *call.get_state();
-        this->pending_state_change_ = true;
-    }
-    if (call.get_speed().has_value()) {
-        this->pending_fan_speed_ = *call.get_speed();
+    // Previously: handled call.get_speed() for slider-based speed (1–4)
+    // Now: map preset mode name to internal speed index
+    if (call.get_preset_mode().has_value()) {
+        const std::string &preset = *call.get_preset_mode();
+        if      (preset == "Low")    this->pending_fan_speed_ = 1;
+        else if (preset == "Medium") this->pending_fan_speed_ = 2;
+        else if (preset == "High")   this->pending_fan_speed_ = 3;
+        else if (preset == "Max")    this->pending_fan_speed_ = 4;
         this->pending_state_change_ = true;
     }
 
-    uint8_t fan_speed = FAN_SPEED_AUTO; // Off
-    if (this->pending_fan_state_) {
-        switch (this->pending_fan_speed_) {
-            case 1: fan_speed = FAN_SPEED_LOW; break;
-            case 2: fan_speed = FAN_SPEED_MEDIUM; break;
-            case 3: fan_speed = FAN_SPEED_HIGH; break;
-            case 4: fan_speed = FAN_SPEED_MAX; break;
-        }
+    uint8_t fan_speed;
+    switch (this->pending_fan_speed_) {
+        case 2:  fan_speed = FAN_SPEED_MEDIUM; break;
+        case 3:  fan_speed = FAN_SPEED_HIGH;   break;
+        case 4:  fan_speed = FAN_SPEED_MAX;    break;
+        default: fan_speed = FAN_SPEED_LOW;    break;
     }
-    
-    // For now, timer is not implemented via Home Assistant fan model. Could be a separate service.
-    uint8_t timer = 0; 
-    
+
     ESP_LOGD(TAG, "Setting fan speed to level %d", this->pending_fan_speed_);
-    
-    // Start async operation
     this->component_state_ = ComponentOperationState::SETTING_SPEED;
-    this->fan_protocol_->start_set_speed(this->pairing_info_.value(), fan_speed, timer);
+    this->fan_protocol_->start_set_speed(this->pairing_info_.value(), fan_speed, 0);
 }
 
 void ZehnderFanComponent::start_pairing() {
@@ -566,10 +566,16 @@ void ZehnderFanComponent::handle_operation_complete() {
     
     if (this->component_state_ == ComponentOperationState::SETTING_SPEED) {
         if (success) {
-            // Apply the pending state changes
             if (this->pending_state_change_) {
-                this->state = this->pending_fan_state_;
+                // Previously: this->state = this->pending_fan_state_; — fan always on now
+                this->state = true;
                 this->speed = this->pending_fan_speed_;
+                switch (this->pending_fan_speed_) {
+                    case 1: this->preset_mode = "Low";    break;
+                    case 2: this->preset_mode = "Medium"; break;
+                    case 3: this->preset_mode = "High";   break;
+                    case 4: this->preset_mode = "Max";    break;
+                }
                 this->pending_state_change_ = false;
                 this->publish_state();
                 ESP_LOGD(TAG, "Fan speed set successfully");
@@ -577,12 +583,20 @@ void ZehnderFanComponent::handle_operation_complete() {
         } else {
             ESP_LOGW(TAG, "Failed to set fan speed");
         }
-        
+
     } else if (this->component_state_ == ComponentOperationState::QUERYING) {
         if (success) {
             uint8_t speed = this->fan_protocol_->get_query_speed();
-            this->state = speed > 0;
+            // Previously: this->state = speed > 0; — fan always on now
+            this->state = true;
             this->speed = speed;
+            switch (speed) {
+                case FAN_SPEED_LOW:    this->preset_mode = "Low";    break;
+                case FAN_SPEED_MEDIUM: this->preset_mode = "Medium"; break;
+                case FAN_SPEED_HIGH:   this->preset_mode = "High";   break;
+                case FAN_SPEED_MAX:    this->preset_mode = "Max";    break;
+                default:               this->preset_mode = "Low";    break;
+            }
             this->publish_state();
             ESP_LOGD(TAG, "Fan state updated from poll: speed=%u", speed);
         } else {

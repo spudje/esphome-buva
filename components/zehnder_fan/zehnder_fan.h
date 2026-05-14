@@ -235,7 +235,7 @@ protected:
     
     // Pending fan call data
     bool pending_state_change_{false};
-    bool pending_fan_state_{false};
+    // bool pending_fan_state_{false};  // Removed: fan has no off state, always runs
     int pending_fan_speed_{1};
 };
 
