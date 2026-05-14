@@ -456,6 +456,10 @@ void ZehnderFanComponent::setup() {
     } else {
         ESP_LOGW(TAG, "No pairing info found. Fan needs to be paired.");
     }
+
+    // Previously: set_supported_preset_modes() was called on FanTraits in get_traits()
+    // Moved here as of ESPHome 2026.4 — must be called on the Fan entity itself
+    this->set_supported_preset_modes({"Low", "Medium", "High", "Max"});
 }
 
 void ZehnderFanComponent::loop() {
@@ -492,9 +496,8 @@ void ZehnderFanComponent::dump_config() {
 
 fan::FanTraits ZehnderFanComponent::get_traits() {
     // Previously: return fan::FanTraits(false, true, false, 4);  // speed slider with 4 steps
-    fan::FanTraits traits(false, false, false, 0);
-    traits.set_supported_preset_modes({"Low", "Medium", "High", "Max"});
-    return traits;
+    // Previously: traits.set_supported_preset_modes() here — deprecated in 2026.4, moved to setup()
+    return fan::FanTraits(false, false, false, 0);
 }
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
@@ -572,11 +575,12 @@ void ZehnderFanComponent::handle_operation_complete() {
                 // Previously: this->state = this->pending_fan_state_; — fan always on now
                 this->state = true;
                 this->speed = this->pending_fan_speed_;
+                // Previously: this->preset_mode = "X"; — field privatised in ESPHome 2026.4, use setter
                 switch (this->pending_fan_speed_) {
-                    case 1: this->preset_mode = "Low";    break;
-                    case 2: this->preset_mode = "Medium"; break;
-                    case 3: this->preset_mode = "High";   break;
-                    case 4: this->preset_mode = "Max";    break;
+                    case 1: this->set_preset_mode("Low");    break;
+                    case 2: this->set_preset_mode("Medium"); break;
+                    case 3: this->set_preset_mode("High");   break;
+                    case 4: this->set_preset_mode("Max");    break;
                 }
                 this->pending_state_change_ = false;
                 this->publish_state();
@@ -592,12 +596,13 @@ void ZehnderFanComponent::handle_operation_complete() {
             // Previously: this->state = speed > 0; — fan always on now
             this->state = true;
             this->speed = speed;
+            // Previously: this->preset_mode = "X"; — field privatised in ESPHome 2026.4, use setter
             switch (speed) {
-                case FAN_SPEED_LOW:    this->preset_mode = "Low";    break;
-                case FAN_SPEED_MEDIUM: this->preset_mode = "Medium"; break;
-                case FAN_SPEED_HIGH:   this->preset_mode = "High";   break;
-                case FAN_SPEED_MAX:    this->preset_mode = "Max";    break;
-                default:               this->preset_mode = "Low";    break;
+                case FAN_SPEED_LOW:    this->set_preset_mode("Low");    break;
+                case FAN_SPEED_MEDIUM: this->set_preset_mode("Medium"); break;
+                case FAN_SPEED_HIGH:   this->set_preset_mode("High");   break;
+                case FAN_SPEED_MAX:    this->set_preset_mode("Max");    break;
+                default:               this->set_preset_mode("Low");    break;
             }
             this->publish_state();
             ESP_LOGD(TAG, "Fan state updated from poll: speed=%u", speed);
