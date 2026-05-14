@@ -525,8 +525,10 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
 
     // Previously: handled call.get_speed() for slider-based speed (1–4)
     // Now: map preset mode name to internal speed index
-    if (call.get_preset_mode().has_value()) {
-        const std::string &preset = *call.get_preset_mode();
+    // Previously: if (call.get_preset_mode().has_value()) { const std::string &preset = *call.get_preset_mode();
+    //   get_preset_mode() returns std::string directly in this ESPHome version, not optional
+    const std::string &preset = call.get_preset_mode();
+    if (!preset.empty()) {
         if      (preset == "Low")    this->pending_fan_speed_ = 1;
         else if (preset == "Medium") this->pending_fan_speed_ = 2;
         else if (preset == "High")   this->pending_fan_speed_ = 3;
