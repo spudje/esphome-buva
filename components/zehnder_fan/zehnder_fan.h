@@ -234,9 +234,10 @@ protected:
     ComponentOperationState component_state_{ComponentOperationState::IDLE};
     
     // Pending fan call data
-    // No set_preset_mode() exists in ESPHome 2026.4 — own the string and override the getter
-    std::string current_preset_mode_{"Low"};
-    const char *get_preset_mode() const override { return current_preset_mode_.c_str(); }
+    // Previously: std::string current_preset_mode_ + get_preset_mode() override
+    // get_preset_mode() is not virtual in ESPHome 2026.4, so override is not possible.
+    // preset_mode_ is private with no setter — use make_call() + guard to let FanCall set it.
+    bool state_update_in_progress_{false};
 
     bool pending_state_change_{false};
     // bool pending_fan_state_{false};  // Removed: fan has no off state, always runs

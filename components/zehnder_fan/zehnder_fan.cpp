@@ -501,6 +501,11 @@ fan::FanTraits ZehnderFanComponent::get_traits() {
 }
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
+    // Guard: make_call() from handle_operation_complete() uses this flag to skip radio
+    if (this->state_update_in_progress_) {
+        return;
+    }
+
     if (!this->pairing_info_.has_value()) {
         ESP_LOGE(TAG, "Cannot control fan: Not paired.");
         return;
@@ -576,13 +581,7 @@ void ZehnderFanComponent::handle_operation_complete() {
                 this->state = true;
                 this->speed = this->pending_fan_speed_;
                 // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
-                // Now: own the string in current_preset_mode_, override get_preset_mode()
-                switch (this->pending_fan_speed_) {
-                    case 1: this->current_preset_mode_ = "Low";    break;
-                    case 2: this->current_preset_mode_ = "Medium"; break;
-                    case 3: this->current_preset_mode_ = "High";   break;
-                    case 4: this->current_preset_mode_ = "Max";    break;
-                }
+                // preset_mode_ was already set by FanCall::perform() before control() was called
                 this->pending_state_change_ = false;
                 this->publish_state();
                 ESP_LOGD(TAG, "Fan speed set successfully");
@@ -595,17 +594,21 @@ void ZehnderFanComponent::handle_operation_complete() {
         if (success) {
             uint8_t speed = this->fan_protocol_->get_query_speed();
             // Previously: this->state = speed > 0; — fan always on now
+            // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
+            // Use make_call() so FanCall::perform() sets preset_mode_ before calling control()
+            // state_update_in_progress_ guard prevents control() from starting a radio operation
+            const char *preset;
+            switch (speed) {
+                case FAN_SPEED_MEDIUM: preset = "Medium"; break;
+                case FAN_SPEED_HIGH:   preset = "High";   break;
+                case FAN_SPEED_MAX:    preset = "Max";    break;
+                default:               preset = "Low";    break;
+            }
             this->state = true;
             this->speed = speed;
-            // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
-            // Now: own the string in current_preset_mode_, override get_preset_mode()
-            switch (speed) {
-                case FAN_SPEED_LOW:    this->current_preset_mode_ = "Low";    break;
-                case FAN_SPEED_MEDIUM: this->current_preset_mode_ = "Medium"; break;
-                case FAN_SPEED_HIGH:   this->current_preset_mode_ = "High";   break;
-                case FAN_SPEED_MAX:    this->current_preset_mode_ = "Max";    break;
-                default:               this->current_preset_mode_ = "Low";    break;
-            }
+            this->state_update_in_progress_ = true;
+            this->make_call().set_state(true).set_preset_mode(preset).perform();
+            this->state_update_in_progress_ = false;
             this->publish_state();
             ESP_LOGD(TAG, "Fan state updated from poll: speed=%u", speed);
         } else {
