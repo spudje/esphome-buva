@@ -497,7 +497,27 @@ void ZehnderFanComponent::dump_config() {
 fan::FanTraits ZehnderFanComponent::get_traits() {
     // Previously: return fan::FanTraits(false, true, false, 4);  // speed slider with 4 steps
     // Previously: traits.set_supported_preset_modes() here — deprecated in 2026.4, moved to setup()
-    return fan::FanTraits(false, false, false, 0);
+    // Previously (working on ESPHome 2025.9.3, broke on upgrade to 2026.4.5):
+    //     return fan::FanTraits(false, false, false, 0);
+    //
+    // Fixed 2026-07-21: on ESPHome 2026.4.5, esphome/components/fan/fan.h shows FanTraits no
+    // longer owns the supported-preset-modes list directly. set_supported_preset_modes() (called
+    // in setup() above) stores the list on the Fan entity itself, and FanTraits only sees it if
+    // the subclass's get_traits() explicitly calls the protected Fan::wire_preset_modes_() helper
+    // to attach a pointer to that Fan-owned vector onto the FanTraits instance being returned.
+    // We never called it, so every FanTraits returned by this override had an empty/null preset
+    // list. That caused two symptoms:
+    //   - Home Assistant saw a fan with no preset modes and rejected fan.set_preset_mode entirely
+    //     ("does not support action fan.set_preset_mode").
+    //   - Internally, FanCall::set_preset_mode() validates the requested mode against
+    //     get_traits().find_preset_mode(), which always failed, logging
+    //     "Preset mode 'Low' not supported" and leaving preset_mode/speed_level unset/zero.
+    // Fix: build the traits locally, wire in the preset modes via wire_preset_modes_(), then
+    // return it. Must be done on every call since get_traits() is called repeatedly (state
+    // publish, validation, dump_config), not just once at startup.
+    fan::FanTraits traits(false, false, false, 0);
+    this->wire_preset_modes_(traits);
+    return traits;
 }
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
@@ -535,8 +555,19 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
     // Now: map preset mode name to internal speed index
     // Previously: if (call.get_preset_mode().has_value()) { const std::string &preset = *call.get_preset_mode();
     //   get_preset_mode() returns std::string directly in this ESPHome version, not optional
-    const std::string &preset = call.get_preset_mode();
-    if (!preset.empty()) {
+    // Previously (broke on 2026.4.5, latent bug not yet hit because HA rejected preset calls
+    // client-side until the get_traits() fix above landed):
+    //     const std::string &preset = call.get_preset_mode();
+    //     if (!preset.empty()) {
+    //
+    // Fixed 2026-07-21: in ESPHome 2026.4.5, FanCall::get_preset_mode() returns `const char *`
+    // (nullptr when no preset was set on this call), not std::string. Binding that directly to
+    // `const std::string &` constructs a temporary std::string from a possibly-null pointer,
+    // which is undefined behavior / crashes (e.g. a plain "turn on" call from HA with no preset
+    // specified would have taken down the device once preset support started working). Guard
+    // with has_preset_mode() and only build the std::string when a preset is actually present.
+    if (call.has_preset_mode()) {
+        const std::string preset(call.get_preset_mode());
         if      (preset == "Low")    this->pending_fan_speed_ = 1;
         else if (preset == "Medium") this->pending_fan_speed_ = 2;
         else if (preset == "High")   this->pending_fan_speed_ = 3;
