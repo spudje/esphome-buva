@@ -46,3 +46,20 @@ if (this->state_update_in_progress_) {
 
 **Confirmed 2026-07-21** against the actual esphome/esphome fan.h and fan.cpp source at tag
 2026.4.5 while fixing exactly this pair of bugs in `components/zehnder_fan/zehnder_fan.cpp`.
+
+6. Setting `FanCall::set_preset_mode()`/building a `make_call()...perform()` does **not** by
+   itself persist anything onto the `Fan` entity's private fields (`preset_mode_`, `state`,
+   `speed`, etc.) — it only validates and forwards the call to `control()`. It is `control()`'s
+   own job to read the `FanCall` and apply it, including calling the protected
+   `Fan::apply_preset_mode_(call)` to store the validated preset pointer onto `preset_mode_`.
+   Confirmed against `esphome/components/template/fan/template_fan.cpp`'s `control()`, which
+   calls `this->apply_preset_mode_(call);` unconditionally before `publish_state()`.
+   **Symptom if skipped:** radio/hardware communication and logging can look completely correct
+   (`fan:078] Preset Mode: Medium` — that log line prints the *FanCall's* preset, not the
+   entity's), yet `fan->has_preset_mode()` stays false forever, so `api_connection.cpp`'s
+   `try_send_fan_state()` never includes `preset_mode` in `FanStateResponse` — HA always sees
+   `preset_mode: ''` even though everything else appears to work.
+   **How to apply:** any custom control() that accepts preset-mode FanCalls — including
+   synthetic ones built via `make_call()...perform()` for e.g. polling-driven state updates —
+   must call `apply_preset_mode_(call)` on every code path that should persist the preset,
+   guard branches included.

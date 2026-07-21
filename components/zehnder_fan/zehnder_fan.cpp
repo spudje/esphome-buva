@@ -522,7 +522,20 @@ fan::FanTraits ZehnderFanComponent::get_traits() {
 
 void ZehnderFanComponent::control(const fan::FanCall &call) {
     // Guard: make_call() from handle_operation_complete() uses this flag to skip radio
+    //
+    // Previously (broke on 2026.4.5): just `return;` here, on the assumption that
+    // FanCall::perform() already applied the preset mode to the Fan entity before calling
+    // control(). That assumption was wrong — per esphome/components/fan/fan.h (reference:
+    // template/fan/template_fan.cpp's control()), nothing does this automatically. A subclass's
+    // control() must explicitly call the protected Fan::apply_preset_mode_(call) to persist
+    // call.get_preset_mode() onto the entity's private preset_mode_ field. Without it,
+    // fan->has_preset_mode() stayed false forever, so the API layer's FanStateResponse always
+    // sent an empty preset_mode even though the radio-query poll had the right value and the
+    // verbose fan.h log line (which prints the FanCall's own preset, not the entity's stored
+    // one) looked correct. Fixed 2026-07-21: apply the synthetic poll call's preset here before
+    // returning, matching the same call used for the real (non-guarded) path below.
     if (this->state_update_in_progress_) {
+        this->apply_preset_mode_(call);
         return;
     }
 
@@ -573,6 +586,14 @@ void ZehnderFanComponent::control(const fan::FanCall &call) {
         else if (preset == "High")   this->pending_fan_speed_ = 3;
         else if (preset == "Max")    this->pending_fan_speed_ = 4;
         this->pending_state_change_ = true;
+
+        // Fixed 2026-07-21: persist the requested preset onto the entity's private
+        // preset_mode_ field now (optimistic update), same reason as the guard above — nothing
+        // does this for us. Doing it here, before the radio operation even starts, matches the
+        // "optimistic state model" ESPHome moved fan to in 2026.4: HA sees the requested preset
+        // immediately rather than waiting for the async radio round-trip in
+        // handle_operation_complete() to call publish_state().
+        this->apply_preset_mode_(call);
     }
 
     uint8_t fan_speed;
@@ -612,7 +633,10 @@ void ZehnderFanComponent::handle_operation_complete() {
                 this->state = true;
                 this->speed = this->pending_fan_speed_;
                 // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
-                // preset_mode_ was already set by FanCall::perform() before control() was called
+                // Previously (wrong, 2026.4.5 fix): "preset_mode_ was already set by
+                // FanCall::perform() before control() was called" — perform() does NOT do this;
+                // it's actually set by our own control() calling apply_preset_mode_(call) above
+                // (see comment there, fixed 2026-07-21).
                 this->pending_state_change_ = false;
                 this->publish_state();
                 ESP_LOGD(TAG, "Fan speed set successfully");
@@ -626,8 +650,10 @@ void ZehnderFanComponent::handle_operation_complete() {
             uint8_t speed = this->fan_protocol_->get_query_speed();
             // Previously: this->state = speed > 0; — fan always on now
             // Previously: this->preset_mode = "X"; — privatised in 2026.4, no setter exists
-            // Use make_call() so FanCall::perform() sets preset_mode_ before calling control()
-            // state_update_in_progress_ guard prevents control() from starting a radio operation
+            // Use make_call() so control() receives this as a FanCall (has_preset_mode()/
+            // get_preset_mode() work on it); the state_update_in_progress_ guard in control()
+            // makes it call apply_preset_mode_(call) directly instead of starting a radio
+            // operation (fixed 2026-07-21 — see comment at that guard).
             const char *preset;
             switch (speed) {
                 case FAN_SPEED_MEDIUM: preset = "Medium"; break;
